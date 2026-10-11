@@ -43,14 +43,16 @@ public final class ProotManager {
 
     public static final int PI_WEB_PORT = 30141;
 
-    // 官方与镜像 Rootfs 线路 (100% 仅从用户自己的 zr987459/pimet 纯净精简 Release 下载，支持多条 CDN 极速镜像)
+    // 官方与镜像 Rootfs 线路 (多条国内高速 CDN 镜像节点并发优选测速，确保极速顺畅下载)
     private static final String[] ROOTFS_URLS_ARM64 = {
+            "https://gh-proxy.com/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz",
             "https://ghfast.top/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz",
             "https://ghproxy.net/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz",
             "https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz"
     };
 
     private static final String[] ROOTFS_URLS_X86_64 = {
+            "https://gh-proxy.com/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs-x86_64.tar.gz",
             "https://ghfast.top/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs-x86_64.tar.gz",
             "https://ghproxy.net/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs-x86_64.tar.gz",
             "https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs-x86_64.tar.gz"
@@ -757,6 +759,7 @@ public final class ProotManager {
         long existingLength = target.exists() ? target.length() : 0;
         HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
         conn.setInstanceFollowRedirects(true);
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; PiMet) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36");
         conn.setConnectTimeout(20000);
         conn.setReadTimeout(30000);
 

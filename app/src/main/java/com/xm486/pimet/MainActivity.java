@@ -453,6 +453,11 @@ public class MainActivity extends AppCompatActivity {
         // 首次状态自检
         checkServiceStatus();
 
+        // 从头启动初次打开：若未安装 Linux 容器，自动弹出主题适配的引擎选择框引导用户
+        if (!ProotManager.isRootfsInstalled(this)) {
+            mainHandler.postDelayed(this::showDeployEngineDialog, 400);
+        }
+
         if (getIntent() != null && getIntent().getBooleanExtra("pimet.open_terminal", false)) {
             mainHandler.postDelayed(this::openTerminalInWorkbench, 300);
         }
@@ -2304,8 +2309,11 @@ public class MainActivity extends AppCompatActivity {
             if (isPiWebAlive) {
                 // 已运行，直接切换到 Pi-Web 工作台
                 switchTab(1);
+            } else if (!ProotManager.isRootfsInstalled(this)) {
+                // 从头启动且尚未安装根系统：弹出主题适配的引擎选择框直接开启部署
+                showDeployEngineDialog();
             } else {
-                // 未运行，启动服务
+                // 未运行但根系统已就绪，启动服务
                 startPiWebService();
             }
         });
@@ -2752,28 +2760,184 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "正在部署中...", Toast.LENGTH_SHORT).show();
             return;
         }
+        showDeployEngineDialog();
+    }
 
-        // 首次部署或重新部署时，弹出核心智能体引擎选择
-        String[] engines = {
-                "🌐 官方标准版 (Pi-Web Standard) [推荐 · 原生轻巧 · 专属 ~/.pi/agent/]",
-                "⚡ can1357 全能版 (oh-my-pi / omp) [3.5万星极客核心 · 专属 ~/.omp/]"
+    private void showDeployEngineDialog() {
+        ThemeManager.ThemePalette palette = ThemeManager.getEffectivePalette(this);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+        GradientDrawable rBg = new GradientDrawable();
+        rBg.setColor(palette.bgPanel);
+        rBg.setCornerRadius(dpToPx(12));
+        rBg.setStroke(dpToPx(1), palette.border);
+        root.setBackground(rBg);
+
+        // 顶栏
+        TextView titleTv = new TextView(this);
+        titleTv.setText("🚀 部署流水线 · 选择核心智能体");
+        titleTv.setTextColor(palette.text);
+        titleTv.setTextSize(15f);
+        titleTv.setTypeface(Typeface.DEFAULT_BOLD);
+        root.addView(titleTv);
+
+        TextView tipTv = new TextView(this);
+        tipTv.setText("各引擎拥有完全隔离的独立沙盒，项目代码工作区无缝互通，请选择初始引擎：");
+        tipTv.setTextColor(palette.textMuted);
+        tipTv.setTextSize(11f);
+        tipTv.setPadding(0, dpToPx(2), 0, dpToPx(10));
+        root.addView(tipTv);
+
+        final String[] chosenEngine = { PiMetConfig.getAgentEngine(this) };
+        final AlertDialog[] dialogRef = new AlertDialog[1];
+
+        // 选项 A: 官方标准版
+        LinearLayout optA = new LinearLayout(this);
+        optA.setOrientation(LinearLayout.HORIZONTAL);
+        optA.setGravity(Gravity.CENTER_VERTICAL);
+        optA.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+        optA.setClickable(true);
+        optA.setFocusable(true);
+
+        TextView iconA = new TextView(this);
+        iconA.setText("🌐");
+        iconA.setTextSize(18f);
+        optA.addView(iconA);
+
+        LinearLayout textColA = new LinearLayout(this);
+        textColA.setOrientation(LinearLayout.VERTICAL);
+        textColA.setPadding(dpToPx(10), 0, dpToPx(6), 0);
+        TextView titleA = new TextView(this);
+        titleA.setText("官方标准版 (Pi-Web Standard) [推荐]");
+        titleA.setTextColor(palette.text);
+        titleA.setTextSize(12.5f);
+        titleA.setTypeface(Typeface.DEFAULT_BOLD);
+        textColA.addView(titleA);
+        TextView subA = new TextView(this);
+        subA.setText("原生轻巧、稳定省电 · 专属沙盒: ~/.pi/agent/");
+        subA.setTextColor(palette.textMuted);
+        subA.setTextSize(10f);
+        textColA.addView(subA);
+        optA.addView(textColA, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView checkA = new TextView(this);
+        checkA.setText(PiMetConfig.isOmpEngine(this) ? "" : "✔");
+        checkA.setTextColor(palette.accent);
+        checkA.setTextSize(16f);
+        checkA.setTypeface(Typeface.DEFAULT_BOLD);
+        optA.addView(checkA);
+        root.addView(optA);
+
+        View spacingOpt = new View(this);
+        root.addView(spacingOpt, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(6)));
+
+        // 选项 B: can1357 全能版
+        LinearLayout optB = new LinearLayout(this);
+        optB.setOrientation(LinearLayout.HORIZONTAL);
+        optB.setGravity(Gravity.CENTER_VERTICAL);
+        optB.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+        optB.setClickable(true);
+        optB.setFocusable(true);
+
+        TextView iconB = new TextView(this);
+        iconB.setText("⚡");
+        iconB.setTextSize(18f);
+        optB.addView(iconB);
+
+        LinearLayout textColB = new LinearLayout(this);
+        textColB.setOrientation(LinearLayout.VERTICAL);
+        textColB.setPadding(dpToPx(10), 0, dpToPx(6), 0);
+        TextView titleB = new TextView(this);
+        titleB.setText("can1357 全能版 (oh-my-pi / omp)");
+        titleB.setTextColor(palette.text);
+        titleB.setTextSize(12.5f);
+        titleB.setTypeface(Typeface.DEFAULT_BOLD);
+        textColB.addView(titleB);
+        TextView subB = new TextView(this);
+        subB.setText("3.5万星极客内核、31个全能工具 · 专属沙盒: ~/.omp/");
+        subB.setTextColor(palette.textMuted);
+        subB.setTextSize(10f);
+        textColB.addView(subB);
+        optB.addView(textColB, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView checkB = new TextView(this);
+        checkB.setText(PiMetConfig.isOmpEngine(this) ? "✔" : "");
+        checkB.setTextColor(palette.accent);
+        checkB.setTextSize(16f);
+        checkB.setTypeface(Typeface.DEFAULT_BOLD);
+        optB.addView(checkB);
+        root.addView(optB);
+
+        Runnable refreshOptStyles = () -> {
+            boolean isOmp = PiMetConfig.ENGINE_OMP.equals(chosenEngine[0]);
+            optA.setBackground(isOmp ? ThemeManager.createSecondaryButtonDrawable(this, palette, 8f) : ThemeManager.createSelectedOptionDrawable(this, palette, 8f));
+            checkA.setText(isOmp ? "" : "✔");
+            titleA.setTextColor(isOmp ? palette.text : palette.accent);
+
+            optB.setBackground(isOmp ? ThemeManager.createSelectedOptionDrawable(this, palette, 8f) : ThemeManager.createSecondaryButtonDrawable(this, palette, 8f));
+            checkB.setText(isOmp ? "✔" : "");
+            titleB.setTextColor(isOmp ? palette.accent : palette.text);
         };
-        int defaultIdx = PiMetConfig.isOmpEngine(this) ? 1 : 0;
-        final int[] selected = { defaultIdx };
+        refreshOptStyles.run();
 
-        new AlertDialog.Builder(this)
-                .setTitle("🚀 部署流水线 · 选择核心智能体")
-                .setSingleChoiceItems(engines, defaultIdx, (d, which) -> {
-                    selected[0] = which;
-                })
-                .setPositiveButton("开始部署", (d, which) -> {
-                    String chosenEngine = selected[0] == 1 ? PiMetConfig.ENGINE_OMP : PiMetConfig.ENGINE_STANDARD_PI;
-                    PiMetConfig.setAgentEngine(this, chosenEngine);
-                    updateEngineUIState();
-                    startDeployPipeline();
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        optA.setOnClickListener(v -> {
+            chosenEngine[0] = PiMetConfig.ENGINE_STANDARD_PI;
+            refreshOptStyles.run();
+        });
+        optB.setOnClickListener(v -> {
+            chosenEngine[0] = PiMetConfig.ENGINE_OMP;
+            refreshOptStyles.run();
+        });
+
+        // 按钮栏
+        LinearLayout btnBar = new LinearLayout(this);
+        btnBar.setOrientation(LinearLayout.HORIZONTAL);
+        btnBar.setGravity(Gravity.END);
+        LinearLayout.LayoutParams bbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bbLp.topMargin = dpToPx(14);
+        btnBar.setLayoutParams(bbLp);
+
+        Button cancelBtn = new Button(this);
+        cancelBtn.setText("取消");
+        cancelBtn.setTextSize(11f);
+        cancelBtn.setTextColor(palette.textMuted);
+        cancelBtn.setBackground(ThemeManager.createSecondaryButtonDrawable(this, palette, 6f));
+        cancelBtn.setPadding(dpToPx(14), dpToPx(6), dpToPx(14), dpToPx(6));
+        cancelBtn.setOnClickListener(v -> {
+            if (dialogRef[0] != null) dialogRef[0].dismiss();
+        });
+        btnBar.addView(cancelBtn);
+
+        View spBtn = new View(this);
+        btnBar.addView(spBtn, new LinearLayout.LayoutParams(dpToPx(8), 1));
+
+        Button confirmBtn = new Button(this);
+        confirmBtn.setText("开始部署 🚀");
+        confirmBtn.setTextSize(11f);
+        confirmBtn.setTextColor(palette.accentContrast);
+        confirmBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        confirmBtn.setBackground(ThemeManager.createPrimaryButtonDrawable(this, palette, 6f));
+        confirmBtn.setPadding(dpToPx(16), dpToPx(6), dpToPx(16), dpToPx(6));
+        confirmBtn.setOnClickListener(v -> {
+            if (dialogRef[0] != null) dialogRef[0].dismiss();
+            PiMetConfig.setAgentEngine(this, chosenEngine[0]);
+            updateEngineUIState();
+            startDeployPipeline();
+        });
+        btnBar.addView(confirmBtn);
+
+        root.addView(btnBar);
+
+        builder.setView(root);
+        AlertDialog dialog = builder.create();
+        dialogRef[0] = dialog;
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+        dialog.show();
     }
 
     private void startDeployPipeline() {
