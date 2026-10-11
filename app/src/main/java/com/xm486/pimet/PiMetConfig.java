@@ -180,6 +180,10 @@ public final class PiMetConfig {
         return isOmpEngine(context) ? "/root/.omp" : "/root/.pi/agent";
     }
 
+    public static String getAiProvider(Context context) {
+        return getPrefs(context).getString(KEY_AI_PROVIDER, PROVIDER_DEEPSEEK);
+    }
+
     public static void setAiProvider(Context context, String provider) {
         getPrefs(context).edit().putString(KEY_AI_PROVIDER, provider).apply();
     }
