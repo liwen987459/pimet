@@ -262,20 +262,6 @@ public class MainActivity extends AppCompatActivity {
 
     private View menuItemHelp;
 
-    // 智能体核心引擎组件 (Engine Switcher)
-    private View menuItemEngine;
-    private TextView menuTitleEngine;
-    private TextView menuSubtitleEngine;
-    private TextView menuArrowEngine;
-    private View cardSettingsEngine;
-    private TextView tvCurrentEngineBadge;
-    private View engineRowStandard;
-    private TextView tvEngineTitleStandard;
-    private TextView tvEngineCheckStandard;
-    private View engineRowOmp;
-    private TextView tvEngineTitleOmp;
-    private TextView tvEngineCheckOmp;
-
     // 界面外观与设计风格组件 (Theme)
     private View menuItemTheme;
     private TextView menuTitleTheme;
@@ -326,7 +312,6 @@ public class MainActivity extends AppCompatActivity {
     private static final int SETTINGS_CAT_STORAGE = 4;
     private static final int SETTINGS_CAT_ABOUT = 5;
     private static final int SETTINGS_CAT_THEME = 6;
-    private static final int SETTINGS_CAT_ENGINE = 7;
     public static final int REQUEST_CODE_IMPORT_BACKUP = 2001;
     private int currentSettingsCategory = SETTINGS_CAT_PORTS;
 
@@ -457,11 +442,6 @@ public class MainActivity extends AppCompatActivity {
         // 首次状态自检
         checkServiceStatus();
 
-        // 从头启动初次打开：若未安装 Linux 容器，自动弹出主题适配的引擎选择框引导用户
-        if (!ProotManager.isRootfsInstalled(this)) {
-            mainHandler.postDelayed(this::showDeployEngineDialog, 400);
-        }
-
         if (getIntent() != null && getIntent().getBooleanExtra("pimet.open_terminal", false)) {
             mainHandler.postDelayed(this::openTerminalInWorkbench, 300);
         }
@@ -573,26 +553,6 @@ public class MainActivity extends AppCompatActivity {
         menuArrowAbout = findViewById(R.id.menuArrowAbout);
 
         menuItemHelp = findViewById(R.id.menuItemHelp);
-
-        // 智能体核心引擎组件
-        menuItemEngine = findViewById(R.id.menuItemEngine);
-        menuTitleEngine = findViewById(R.id.menuTitleEngine);
-        menuSubtitleEngine = findViewById(R.id.menuSubtitleEngine);
-        menuArrowEngine = findViewById(R.id.menuArrowEngine);
-        cardSettingsEngine = findViewById(R.id.cardSettingsEngine);
-        tvCurrentEngineBadge = findViewById(R.id.tvCurrentEngineBadge);
-        engineRowStandard = findViewById(R.id.engineRowStandard);
-        tvEngineTitleStandard = findViewById(R.id.tvEngineTitleStandard);
-        tvEngineCheckStandard = findViewById(R.id.tvEngineCheckStandard);
-        engineRowOmp = findViewById(R.id.engineRowOmp);
-        tvEngineTitleOmp = findViewById(R.id.tvEngineTitleOmp);
-        tvEngineCheckOmp = findViewById(R.id.tvEngineCheckOmp);
-
-        if (menuItemEngine != null) menuItemEngine.setOnClickListener(v -> openSettingsSubWindow(SETTINGS_CAT_ENGINE));
-        if (engineRowStandard != null) engineRowStandard.setOnClickListener(v -> selectEngine(PiMetConfig.ENGINE_STANDARD_PI));
-        if (engineRowOmp != null) engineRowOmp.setOnClickListener(v -> selectEngine(PiMetConfig.ENGINE_OMP));
-
-        updateEngineUIState();
 
         menuItemTheme = findViewById(R.id.menuItemTheme);
         menuTitleTheme = findViewById(R.id.menuTitleTheme);
@@ -2318,8 +2278,8 @@ public class MainActivity extends AppCompatActivity {
                 // 已运行，直接切换到 Pi-Web 工作台
                 switchTab(1);
             } else if (!ProotManager.isRootfsInstalled(this)) {
-                // 从头启动且尚未安装根系统：弹出主题适配的引擎选择框直接开启部署
-                showDeployEngineDialog();
+                // 从头启动且尚未安装根系统：直接开启部署
+                triggerFullDeploy();
             } else {
                 // 未运行但根系统已就绪，启动服务
                 startPiWebService();
@@ -2811,186 +2771,8 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "正在部署中...", Toast.LENGTH_SHORT).show();
             return;
         }
-        showDeployEngineDialog();
+        startDeployPipeline();
     }
-
-    private void showDeployEngineDialog() {
-        ThemeManager.ThemePalette palette = ThemeManager.getEffectivePalette(this);
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
-        GradientDrawable rBg = new GradientDrawable();
-        rBg.setColor(palette.bgPanel);
-        rBg.setCornerRadius(dpToPx(12));
-        rBg.setStroke(dpToPx(1), palette.border);
-        root.setBackground(rBg);
-
-        // 顶栏
-        TextView titleTv = new TextView(this);
-        titleTv.setText("🚀 部署流水线 · 选择核心智能体");
-        titleTv.setTextColor(palette.text);
-        titleTv.setTextSize(15f);
-        titleTv.setTypeface(Typeface.DEFAULT_BOLD);
-        root.addView(titleTv);
-
-        TextView tipTv = new TextView(this);
-        tipTv.setText("各引擎拥有完全隔离的独立沙盒，项目代码工作区无缝互通，请选择初始引擎：");
-        tipTv.setTextColor(palette.textMuted);
-        tipTv.setTextSize(11f);
-        tipTv.setPadding(0, dpToPx(2), 0, dpToPx(10));
-        root.addView(tipTv);
-
-        final String[] chosenEngine = { PiMetConfig.getAgentEngine(this) };
-        final AlertDialog[] dialogRef = new AlertDialog[1];
-
-        // 选项 A: 官方标准版
-        LinearLayout optA = new LinearLayout(this);
-        optA.setOrientation(LinearLayout.HORIZONTAL);
-        optA.setGravity(Gravity.CENTER_VERTICAL);
-        optA.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
-        optA.setClickable(true);
-        optA.setFocusable(true);
-
-        TextView iconA = new TextView(this);
-        iconA.setText("🌐");
-        iconA.setTextSize(18f);
-        optA.addView(iconA);
-
-        LinearLayout textColA = new LinearLayout(this);
-        textColA.setOrientation(LinearLayout.VERTICAL);
-        textColA.setPadding(dpToPx(10), 0, dpToPx(6), 0);
-        TextView titleA = new TextView(this);
-        titleA.setText("官方标准版 (Pi-Web Standard) [推荐]");
-        titleA.setTextColor(palette.text);
-        titleA.setTextSize(12.5f);
-        titleA.setTypeface(Typeface.DEFAULT_BOLD);
-        textColA.addView(titleA);
-        TextView subA = new TextView(this);
-        subA.setText("原生轻巧、稳定省电 · 专属沙盒: ~/.pi/agent/");
-        subA.setTextColor(palette.textMuted);
-        subA.setTextSize(10f);
-        textColA.addView(subA);
-        optA.addView(textColA, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView checkA = new TextView(this);
-        checkA.setText(PiMetConfig.isOmpEngine(this) ? "" : "✔");
-        checkA.setTextColor(palette.accent);
-        checkA.setTextSize(16f);
-        checkA.setTypeface(Typeface.DEFAULT_BOLD);
-        optA.addView(checkA);
-        root.addView(optA);
-
-        View spacingOpt = new View(this);
-        root.addView(spacingOpt, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(6)));
-
-        // 选项 B: can1357 全能版
-        LinearLayout optB = new LinearLayout(this);
-        optB.setOrientation(LinearLayout.HORIZONTAL);
-        optB.setGravity(Gravity.CENTER_VERTICAL);
-        optB.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
-        optB.setClickable(true);
-        optB.setFocusable(true);
-
-        TextView iconB = new TextView(this);
-        iconB.setText("⚡");
-        iconB.setTextSize(18f);
-        optB.addView(iconB);
-
-        LinearLayout textColB = new LinearLayout(this);
-        textColB.setOrientation(LinearLayout.VERTICAL);
-        textColB.setPadding(dpToPx(10), 0, dpToPx(6), 0);
-        TextView titleB = new TextView(this);
-        titleB.setText("can1357 全能版 (oh-my-pi / omp)");
-        titleB.setTextColor(palette.text);
-        titleB.setTextSize(12.5f);
-        titleB.setTypeface(Typeface.DEFAULT_BOLD);
-        textColB.addView(titleB);
-        TextView subB = new TextView(this);
-        subB.setText("3.5万星极客内核、31个全能工具 · 专属沙盒: ~/.omp/");
-        subB.setTextColor(palette.textMuted);
-        subB.setTextSize(10f);
-        textColB.addView(subB);
-        optB.addView(textColB, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView checkB = new TextView(this);
-        checkB.setText(PiMetConfig.isOmpEngine(this) ? "✔" : "");
-        checkB.setTextColor(palette.accent);
-        checkB.setTextSize(16f);
-        checkB.setTypeface(Typeface.DEFAULT_BOLD);
-        optB.addView(checkB);
-        root.addView(optB);
-
-        Runnable refreshOptStyles = () -> {
-            boolean isOmp = PiMetConfig.ENGINE_OMP.equals(chosenEngine[0]);
-            optA.setBackground(isOmp ? ThemeManager.createSecondaryButtonDrawable(this, palette, 8f) : ThemeManager.createSelectedOptionDrawable(this, palette, 8f));
-            checkA.setText(isOmp ? "" : "✔");
-            titleA.setTextColor(isOmp ? palette.text : palette.accent);
-
-            optB.setBackground(isOmp ? ThemeManager.createSelectedOptionDrawable(this, palette, 8f) : ThemeManager.createSecondaryButtonDrawable(this, palette, 8f));
-            checkB.setText(isOmp ? "✔" : "");
-            titleB.setTextColor(isOmp ? palette.accent : palette.text);
-        };
-        refreshOptStyles.run();
-
-        optA.setOnClickListener(v -> {
-            chosenEngine[0] = PiMetConfig.ENGINE_STANDARD_PI;
-            refreshOptStyles.run();
-        });
-        optB.setOnClickListener(v -> {
-            chosenEngine[0] = PiMetConfig.ENGINE_OMP;
-            refreshOptStyles.run();
-        });
-
-        // 按钮栏
-        LinearLayout btnBar = new LinearLayout(this);
-        btnBar.setOrientation(LinearLayout.HORIZONTAL);
-        btnBar.setGravity(Gravity.END);
-        LinearLayout.LayoutParams bbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bbLp.topMargin = dpToPx(14);
-        btnBar.setLayoutParams(bbLp);
-
-        Button cancelBtn = new Button(this);
-        cancelBtn.setText("取消");
-        cancelBtn.setTextSize(11f);
-        cancelBtn.setTextColor(palette.textMuted);
-        cancelBtn.setBackground(ThemeManager.createSecondaryButtonDrawable(this, palette, 6f));
-        cancelBtn.setPadding(dpToPx(14), dpToPx(6), dpToPx(14), dpToPx(6));
-        cancelBtn.setOnClickListener(v -> {
-            if (dialogRef[0] != null) dialogRef[0].dismiss();
-        });
-        btnBar.addView(cancelBtn);
-
-        View spBtn = new View(this);
-        btnBar.addView(spBtn, new LinearLayout.LayoutParams(dpToPx(8), 1));
-
-        Button confirmBtn = new Button(this);
-        confirmBtn.setText("开始部署 🚀");
-        confirmBtn.setTextSize(11f);
-        confirmBtn.setTextColor(palette.accentContrast);
-        confirmBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        confirmBtn.setBackground(ThemeManager.createPrimaryButtonDrawable(this, palette, 6f));
-        confirmBtn.setPadding(dpToPx(16), dpToPx(6), dpToPx(16), dpToPx(6));
-        confirmBtn.setOnClickListener(v -> {
-            if (dialogRef[0] != null) dialogRef[0].dismiss();
-            PiMetConfig.setAgentEngine(this, chosenEngine[0]);
-            updateEngineUIState();
-            startDeployPipeline();
-        });
-        btnBar.addView(confirmBtn);
-
-        root.addView(btnBar);
-
-        builder.setView(root);
-        AlertDialog dialog = builder.create();
-        dialogRef[0] = dialog;
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-        }
-        dialog.show();
-    }
-
     private void startDeployPipeline() {
         if (isDeploying) return;
         isDeploying = true;
@@ -2998,7 +2780,6 @@ public class MainActivity extends AppCompatActivity {
         updateLaunchStatusUI(false);
 
         appendLaunchLog("\u001B[33m🚀 开始执行一键部署流水线...\u001B[0m\n");
-        appendLaunchLog("• 所选引擎: " + (PiMetConfig.isOmpEngine(this) ? "can1357 全能版 (~/.omp/)" : "官方标准版 (~/.pi/agent/)") + "\n");
 
         if (!ProotManager.isRootfsInstalled(this)) {
             appendLaunchLog("\u001B[36m• 正在从镜像源提取 Linux 根文件系统...\u001B[0m\n");
@@ -3017,7 +2798,7 @@ public class MainActivity extends AppCompatActivity {
                         appendLaunchLog("\u001B[32m✔ Linux 根系统部署完成！\u001B[0m\n");
                         isDeploying = false;
                         hideLaunchProgress();
-                        checkEngineAndStartService();
+                        startPiWebService();
                     });
                 }
 
@@ -3033,27 +2814,6 @@ public class MainActivity extends AppCompatActivity {
             });
         } else {
             isDeploying = false;
-            checkEngineAndStartService();
-        }
-    }
-
-    private void checkEngineAndStartService() {
-        if (PiMetConfig.isOmpEngine(this) && !ProotManager.isOmpInstalled(this)) {
-            appendLaunchLog("\u001B[33m• 正在从镜像源安装 @oh-my-pi/pi-coding-agent 全能核心...\u001B[0m\n");
-            new Thread(() -> {
-                String reg = PiMetConfig.getNpmRegistry(this);
-                String cmd = "npm install -g --ignore-scripts @oh-my-pi/pi-coding-agent --registry=" + reg;
-                int code = ProotManager.executeCommandSync(this, cmd);
-                mainHandler.post(() -> {
-                    if (code == 0 || ProotManager.isOmpInstalled(this)) {
-                        appendLaunchLog("\u001B[32m✔ oh-my-pi 核心部署成功！\u001B[0m\n");
-                    } else {
-                        appendLaunchLog("\u001B[31m⚠️ oh-my-pi 安装未完成，将先以标准核心启动服务\u001B[0m\n");
-                    }
-                    startPiWebService();
-                });
-            }).start();
-        } else {
             startPiWebService();
         }
     }
@@ -4301,9 +4061,6 @@ public class MainActivity extends AppCompatActivity {
 
         String title = "⚡ 端口与网络服务";
         switch (category) {
-            case SETTINGS_CAT_ENGINE:
-                title = "🧠 智能体核心引擎";
-                break;
             case SETTINGS_CAT_PORTS:
                 title = "⚡ 端口与网络服务";
                 break;
@@ -4329,7 +4086,6 @@ public class MainActivity extends AppCompatActivity {
             tvSettingsSubWindowTitle.setText(title);
         }
 
-        updateMenuItemState(menuItemEngine, menuTitleEngine, menuArrowEngine, category == SETTINGS_CAT_ENGINE);
         updateMenuItemState(menuItemPorts, menuTitlePorts, menuArrowPorts, category == SETTINGS_CAT_PORTS);
         if (menuItemUpdate != null) {
             updateMenuItemState(menuItemUpdate, menuTitleUpdate, menuArrowUpdate, category == SETTINGS_CAT_UPDATE);
@@ -4362,7 +4118,6 @@ public class MainActivity extends AppCompatActivity {
     public void switchSettingsCategory(int category) {
         currentSettingsCategory = category;
 
-        updateMenuItemState(menuItemEngine, menuTitleEngine, menuArrowEngine, category == SETTINGS_CAT_ENGINE);
         updateMenuItemState(menuItemPorts, menuTitlePorts, menuArrowPorts, category == SETTINGS_CAT_PORTS);
         updateMenuItemState(menuItemUpdate, menuTitleUpdate, menuArrowUpdate, category == SETTINGS_CAT_UPDATE);
         updateMenuItemState(menuItemPet, menuTitlePet, menuArrowPet, category == SETTINGS_CAT_PET);
@@ -4396,11 +4151,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void applySettingsCardsVisibility() {
         int category = currentSettingsCategory;
-
-        // 核心引擎卡片
-        if (cardSettingsEngine != null) {
-            cardSettingsEngine.setVisibility(category == SETTINGS_CAT_ENGINE ? View.VISIBLE : View.GONE);
-        }
 
         // 端口与网络类卡片
         if (cardSettingsPorts != null) {
@@ -5549,76 +5299,6 @@ public class MainActivity extends AppCompatActivity {
         physicsContainer.addView(column);
     }
 
-    // ================= 智能体核心引擎管理 (Engine Management) =================
-    private void selectEngine(String engineId) {
-        String current = PiMetConfig.getAgentEngine(this);
-        if (current.equals(engineId)) return;
-
-        boolean isOmp = PiMetConfig.ENGINE_OMP.equals(engineId);
-        if (isOmp && !ProotManager.isOmpInstalled(this)) {
-            // 需要先在后台下载安装 omp
-            new AlertDialog.Builder(this)
-                    .setTitle("⚡ 安装 can1357 / oh-my-pi 核心")
-                    .setMessage("检测到尚未安装 omp 全能核心。\n\n是否立即从 npm 镜像源拉取 @oh-my-pi/pi-coding-agent 并配置独立沙盒目录？")
-                    .setPositiveButton("立即安装", (d, w) -> {
-                        Toast.makeText(this, "正在安装 oh-my-pi 核心，请稍候...", Toast.LENGTH_SHORT).show();
-                        appendLaunchLog("\u001B[33m• 正在从镜像源安装 @oh-my-pi/pi-coding-agent 全能核心...\u001B[0m\n");
-                        new Thread(() -> {
-                            String reg = PiMetConfig.getNpmRegistry(this);
-                            String cmd = "npm install -g --ignore-scripts @oh-my-pi/pi-coding-agent --registry=" + reg;
-                            int code = ProotManager.executeCommandSync(this, cmd);
-                            mainHandler.post(() -> {
-                                if (code == 0 || ProotManager.isOmpInstalled(this)) {
-                                    PiMetConfig.setAgentEngine(this, engineId);
-                                    updateEngineUIState();
-                                    appendLaunchLog("\u001B[32m✔ oh-my-pi 核心安装成功，已切换至独立沙盒: ~/.omp/\u001B[0m\n");
-                                    Toast.makeText(this, "✔ oh-my-pi 核心已就绪！", Toast.LENGTH_SHORT).show();
-                                    askRestartForEngine();
-                                } else {
-                                    appendLaunchLog("\u001B[31m❌ 安装失败，退出码: " + code + "\u001B[0m\n");
-                                    Toast.makeText(this, "安装失败，请检查网络或在详细日志查看输出", Toast.LENGTH_LONG).show();
-                                }
-                            });
-                        }).start();
-                    })
-                    .setNegativeButton("取消", null)
-                    .show();
-            return;
-        }
-
-        PiMetConfig.setAgentEngine(this, engineId);
-        updateEngineUIState();
-        Toast.makeText(this, "已切换为: " + (isOmp ? "can1357 全能版 (oh-my-pi)" : "官方标准版 (Pi-Web)"), Toast.LENGTH_SHORT).show();
-        askRestartForEngine();
-    }
-
-    private void askRestartForEngine() {
-        if (isPiWebAlive) {
-            new AlertDialog.Builder(this)
-                    .setTitle("🔄 重启服务以生效")
-                    .setMessage("核心引擎已切换。沙盒配置与会话环境已重定向。\n是否立即重启 Pi-Web 服务？")
-                    .setPositiveButton("立即重启", (d, w) -> restartPiWebService())
-                    .setNegativeButton("稍后手动重启", null)
-                    .show();
-        }
-    }
-
-    private void updateEngineUIState() {
-        String current = PiMetConfig.getAgentEngine(this);
-        boolean isOmp = PiMetConfig.ENGINE_OMP.equals(current);
-        ThemeManager.ThemePalette palette = ThemeManager.getEffectivePalette(this);
-
-        if (tvCurrentEngineBadge != null) {
-            tvCurrentEngineBadge.setText(isOmp ? "can1357 全能版" : "官方标准版");
-        }
-        if (menuSubtitleEngine != null) {
-            menuSubtitleEngine.setText(isOmp ? "当前: can1357 全能版 (~/.omp/)" : "当前: 官方标准版 (~/.pi/agent/)");
-        }
-
-        updateThemeOptionRow(engineRowStandard, tvEngineTitleStandard, tvEngineCheckStandard, !isOmp, palette);
-        updateThemeOptionRow(engineRowOmp, tvEngineTitleOmp, tvEngineCheckOmp, isOmp, palette);
-    }
-
     // ================= 主题与外观管理 (Theme Management) =================
     private void selectTheme(String themeId) {
         ThemeManager.setThemePreference(this, themeId);
@@ -5719,7 +5399,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // 刷新设置条目菜单状态
-        updateMenuItemState(menuItemEngine, menuTitleEngine, menuArrowEngine, currentSettingsCategory == SETTINGS_CAT_ENGINE);
         updateMenuItemState(menuItemPorts, menuTitlePorts, menuArrowPorts, currentSettingsCategory == SETTINGS_CAT_PORTS);
         if (menuItemUpdate != null) {
             updateMenuItemState(menuItemUpdate, menuTitleUpdate, menuArrowUpdate, currentSettingsCategory == SETTINGS_CAT_UPDATE);

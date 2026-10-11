@@ -120,14 +120,6 @@ public final class ProotManager {
         return piBin1.exists() || piBin2.exists();
     }
 
-    public static boolean isOmpInstalled(Context context) {
-        File rootfs = getRootfsDir(context);
-        File ompBin1 = new File(rootfs, "usr/local/bin/omp");
-        File ompBin2 = new File(rootfs, "root/.local/bin/omp");
-        File ompPkg = new File(rootfs, "usr/local/lib/node_modules/@oh-my-pi/pi-coding-agent");
-        return ompBin1.exists() || ompBin2.exists() || (ompPkg.exists() && ompPkg.isDirectory());
-    }
-
     public static boolean isPiWebInstalled(Context context) {
         File rootfs = getRootfsDir(context);
         File piWebJs1 = new File(rootfs, "usr/local/lib/node_modules/@agegr/pi-web/bin/pi-web.js");

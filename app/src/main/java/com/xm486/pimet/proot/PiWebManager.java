@@ -183,11 +183,7 @@ public final class PiWebManager {
                     }
                 });
 
-                String agentCfgDir = PiMetConfig.getAgentConfigDir(context);
-                String extraEnv = "export PI_CODING_AGENT_DIR=" + agentCfgDir + "; ";
-                if (PiMetConfig.isOmpEngine(context)) {
-                    extraEnv += "export PI_CONFIG_DIR=/root/.omp; ";
-                }
+                String extraEnv = "export PI_CODING_AGENT_DIR=/root/.pi/agent; ";
 
                 List<String> startCmd = Arrays.asList(
                         "/bin/bash", "-c",
