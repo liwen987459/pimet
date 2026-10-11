@@ -2456,6 +2456,62 @@
                             android:textColor="#C9D1D9"
                             android:textSize="12sp" />
                     </LinearLayout>
+
+                <!-- Linux 容器系统 Rootfs 镜像源设置与真测速卡片 -->
+                <LinearLayout
+                    android:id="@+id/cardSettingsRootfsMirror"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_card_modern"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="🌐 Linux 容器镜像下载源"
+                            android:textColor="#F0F6FC"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/btnTestAllRootfsMirrors"
+                            android:layout_width="wrap_content"
+                            android:layout_height="30dp"
+                            android:background="@drawable/bg_btn_secondary"
+                            android:gravity="center"
+                            android:paddingStart="10dp"
+                            android:paddingEnd="10dp"
+                            android:text="⚡ 全部并发测速"
+                            android:textColor="#58A6FF"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvRootfsMirrorStatusHint"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="下载 300MB+ Linux 核心容器时使用。默认自动真测速并动态熔断换线。"
+                        android:textColor="#8B949E"
+                        android:textSize="11.5sp" />
+
+                    <!-- 镜像源选项列表 -->
+                    <LinearLayout
+                        android:id="@+id/rootfsMirrorOptionsContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:orientation="vertical" />
+                </LinearLayout>
                 </LinearLayout>
 
                 <!-- 容器存储与清理卡片 -->

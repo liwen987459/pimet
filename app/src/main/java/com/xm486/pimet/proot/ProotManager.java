@@ -43,20 +43,31 @@ public final class ProotManager {
 
     public static final int PI_WEB_PORT = 30141;
 
-    // 官方与镜像 Rootfs 线路 (多条国内高速 CDN 镜像节点并发优选测速，确保极速顺畅下载)
-    private static final String[] ROOTFS_URLS_ARM64 = {
-            "https://gh-proxy.com/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz",
-            "https://ghfast.top/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz",
-            "https://ghproxy.net/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz",
-            "https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz"
+    // 官方与镜像 Rootfs 线路 (涵盖国内多条高速直连 CDN 节点与官方直连源)
+    public static final String[] ROOTFS_MIRROR_PREFIXES = {
+            "https://gh-proxy.com/",
+            "https://ghfast.top/",
+            "https://ghproxy.net/",
+            "https://github.com/"
     };
 
-    private static final String[] ROOTFS_URLS_X86_64 = {
-            "https://gh-proxy.com/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs-x86_64.tar.gz",
-            "https://ghfast.top/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs-x86_64.tar.gz",
-            "https://ghproxy.net/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs-x86_64.tar.gz",
-            "https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs-x86_64.tar.gz"
+    public static final String[] ROOTFS_MIRROR_NAMES = {
+            "gh-proxy (国内高速CDN 1)",
+            "ghfast (国内高速CDN 2)",
+            "ghproxy.net (国内镜像 3)",
+            "GitHub (官方直连/梯子)"
     };
+
+    public static final String GITHUB_ROOTFS_ARM64_PATH = "https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz";
+    public static final String GITHUB_ROOTFS_X86_64_PATH = "https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs-x86_64.tar.gz";
+
+    public static String getFullRootfsUrl(String mirrorPrefix, boolean isX86) {
+        String path = isX86 ? GITHUB_ROOTFS_X86_64_PATH : GITHUB_ROOTFS_ARM64_PATH;
+        if ("https://github.com/".equals(mirrorPrefix)) {
+            return path;
+        }
+        return mirrorPrefix + path;
+    }
 
     public interface InstallCallback {
         void onProgress(String message, int percent);
@@ -343,11 +354,29 @@ public final class ProotManager {
                         break;
                     }
                 }
-                String[] rawUrls = isX86 ? ROOTFS_URLS_X86_64 : ROOTFS_URLS_ARM64;
-                if (callback != null) callback.onProgress("⚡ 正在测速优选下载镜像线路...", 3);
-                String[] urls = testAndSortCandidateUrls(rawUrls, msg -> {
-                    if (callback != null) callback.onProgress(msg, 5);
-                });
+                List<String> rawUrlList = new ArrayList<>();
+                String chosenMirror = com.xm486.pimet.PiMetConfig.getRootfsUrl(context);
+                if (!com.xm486.pimet.PiMetConfig.ROOTFS_MIRROR_AUTO.equals(chosenMirror)) {
+                    // 用户在设置中手动指定了固定镜像源，直接优先置顶该源
+                    rawUrlList.add(getFullRootfsUrl(chosenMirror, isX86));
+                }
+                for (String pfx : ROOTFS_MIRROR_PREFIXES) {
+                    String full = getFullRootfsUrl(pfx, isX86);
+                    if (!rawUrlList.contains(full)) {
+                        rawUrlList.add(full);
+                    }
+                }
+                String[] rawUrls = rawUrlList.toArray(new String[0]);
+
+                String[] urls;
+                if (com.xm486.pimet.PiMetConfig.ROOTFS_MIRROR_AUTO.equals(chosenMirror)) {
+                    if (callback != null) callback.onProgress("⚡ 正在对各路镜像进行真吞吐量竞速优选...", 3);
+                    urls = testAndSortCandidateUrls(rawUrls, msg -> {
+                        if (callback != null) callback.onProgress(msg, 5);
+                    });
+                } else {
+                    urls = rawUrls;
+                }
                 File targetTarball = new File(tmpDir, "rootfs.tar.gz");
 
                 boolean downloadSuccess = false;
@@ -434,39 +463,50 @@ public final class ProotManager {
         void onLog(String message);
     }
 
-    public static String[] testAndSortCandidateUrls(String[] urls, SpeedLogCallback logCallback) {
-        if (urls == null || urls.length <= 1) return urls;
+    public static class MirrorSpeedResult {
+        public String url;
+        public long speedBps; // 每秒字节数
+        public long latencyMs; // 握手延迟
+        public boolean success;
 
-        List<Pair<String, Long>> results = new ArrayList<>();
-        for (String u : urls) {
-            long latency = testUrlLatency(u);
-            results.add(new Pair<>(u, latency >= 0 ? latency : 999999L));
+        public MirrorSpeedResult(String url, long speedBps, long latencyMs, boolean success) {
+            this.url = url;
+            this.speedBps = speedBps;
+            this.latencyMs = latencyMs;
+            this.success = success;
         }
-
-        Collections.sort(results, (a, b) -> Long.compare(a.second, b.second));
-        String[] sorted = new String[urls.length];
-        for (int i = 0; i < results.size(); i++) {
-            sorted[i] = results.get(i).first;
-        }
-        if (logCallback != null && results.get(0).second < 999999L) {
-            logCallback.onLog("⚡ 优选最快镜像: " + results.get(0).first + " (" + results.get(0).second + "ms)");
-        }
-        return sorted;
     }
 
-    public static long testUrlLatency(String urlStr) {
+    /**
+     * 并发对所有镜像进行微片段真实吞吐量测速 (下载 128KB 真实数据，测出真实 MB/s)
+     */
+    public static MirrorSpeedResult testUrlRealThroughput(String urlStr) {
         HttpURLConnection conn = null;
         try {
             long start = System.currentTimeMillis();
             URL u = new URL(urlStr);
             conn = (HttpURLConnection) u.openConnection();
-            conn.setRequestMethod("HEAD");
-            conn.setConnectTimeout(1800);
-            conn.setReadTimeout(1800);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36");
+            conn.setRequestProperty("Range", "bytes=0-131071"); // 128 KB
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3500);
             conn.setInstanceFollowRedirects(true);
+
             int code = conn.getResponseCode();
-            if (code >= 200 && code < 400) {
-                return System.currentTimeMillis() - start;
+            if (code == 200 || code == 206) {
+                long latency = System.currentTimeMillis() - start;
+                try (InputStream in = new BufferedInputStream(conn.getInputStream())) {
+                    byte[] buf = new byte[16384];
+                    int totalRead = 0;
+                    int r;
+                    while ((r = in.read(buf)) != -1) {
+                        totalRead += r;
+                    }
+                    long totalDuration = System.currentTimeMillis() - start;
+                    if (totalDuration <= 0) totalDuration = 1;
+                    long speedBps = (totalRead * 1000L) / totalDuration;
+                    return new MirrorSpeedResult(urlStr, speedBps, latency, true);
+                }
             }
         } catch (Throwable ignored) {
         } finally {
@@ -476,7 +516,46 @@ public final class ProotManager {
                 } catch (Throwable ignored) {}
             }
         }
-        return -1;
+        return new MirrorSpeedResult(urlStr, 0, 99999L, false);
+    }
+
+    public static String[] testAndSortCandidateUrls(String[] urls, SpeedLogCallback logCallback) {
+        if (urls == null || urls.length <= 1) return urls;
+
+        List<java.util.concurrent.Future<MirrorSpeedResult>> futures = new ArrayList<>();
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(Math.min(urls.length, 6));
+
+        for (String u : urls) {
+            futures.add(executor.submit(() -> testUrlRealThroughput(u)));
+        }
+        executor.shutdown();
+
+        List<MirrorSpeedResult> speedResults = new ArrayList<>();
+        for (java.util.concurrent.Future<MirrorSpeedResult> f : futures) {
+            try {
+                speedResults.add(f.get());
+            } catch (Throwable ignored) {}
+        }
+
+        // 优先按吞吐量从大到小排序，若均无速度则按延迟从小到大排序
+        Collections.sort(speedResults, (a, b) -> {
+            if (a.success != b.success) return a.success ? -1 : 1;
+            if (a.speedBps != b.speedBps) return Long.compare(b.speedBps, a.speedBps);
+            return Long.compare(a.latencyMs, b.latencyMs);
+        });
+
+        String[] sorted = new String[urls.length];
+        for (int i = 0; i < speedResults.size(); i++) {
+            sorted[i] = speedResults.get(i).url;
+        }
+
+        if (logCallback != null && !speedResults.isEmpty() && speedResults.get(0).success) {
+            MirrorSpeedResult top = speedResults.get(0);
+            double kb = top.speedBps / 1024.0;
+            String speedStr = kb > 1024 ? String.format(java.util.Locale.US, "%.1f MB/s", kb / 1024.0) : String.format(java.util.Locale.US, "%.0f KB/s", kb);
+            logCallback.onLog("⚡ 优选最高吞吐量镜像: " + top.url + " (" + speedStr + " / " + top.latencyMs + "ms)");
+        }
+        return sorted;
     }
 
     private static void copyExec(File src, File dst) {
@@ -793,7 +872,9 @@ public final class ProotManager {
         long downloaded = existingLength;
         int lastPercent = -1;
         long lastProgressTime = System.currentTimeMillis();
-        long lastReadTime = System.currentTimeMillis();
+        long startTime = System.currentTimeMillis();
+        long intervalStart = startTime;
+        long intervalDownloaded = 0;
 
         try (InputStream in = new BufferedInputStream(conn.getInputStream());
              FileOutputStream fos = new FileOutputStream(target, append)) {
@@ -801,8 +882,19 @@ public final class ProotManager {
             while ((read = in.read(buf)) != -1) {
                 fos.write(buf, 0, read);
                 downloaded += read;
+                intervalDownloaded += read;
                 long now = System.currentTimeMillis();
-                lastReadTime = now;
+
+                // 动态速度检测与低速熔断机制：若已开始下载超过 6 秒且最近速率持续低于 120 KB/s，主动断开熔断换线！
+                if (now - intervalStart >= 5000) {
+                    long speedBps = (intervalDownloaded * 1000L) / (now - intervalStart);
+                    if (now - startTime > 6000 && speedBps < 120 * 1024) { // 低于 120 KB/s
+                        Log.w(TAG, "Download speed too low (" + (speedBps / 1024) + " KB/s), aborting to fallback mirror...");
+                        throw new Exception("下载速率过低 (" + (speedBps / 1024) + " KB/s)，自动熔断切换备用镜像线路");
+                    }
+                    intervalStart = now;
+                    intervalDownloaded = 0;
+                }
 
                 if (totalLength > 0) {
                     int percent = (int) (downloaded * 100 / totalLength);

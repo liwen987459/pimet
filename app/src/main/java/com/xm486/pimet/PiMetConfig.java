@@ -65,6 +65,12 @@ public final class PiMetConfig {
     public static final String NPM_MIRROR_TAOBAO = "https://registry.npmmirror.com";
     public static final String NPM_MIRROR_OFFICIAL = "https://registry.npmjs.org";
 
+    public static final String ROOTFS_MIRROR_AUTO = "auto";
+    public static final String ROOTFS_MIRROR_GHPROXY_COM = "https://gh-proxy.com/";
+    public static final String ROOTFS_MIRROR_GHFAST = "https://ghfast.top/";
+    public static final String ROOTFS_MIRROR_GHPROXY_NET = "https://ghproxy.net/";
+    public static final String ROOTFS_MIRROR_OFFICIAL = "https://github.com/";
+
     public static final String ROOTFS_GHFAST = "https://ghfast.top/https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz";
     public static final String ROOTFS_OFFICIAL = "https://github.com/zr987459/pimet/releases/download/runtime-latest/rootfs.tar.gz";
 
@@ -144,7 +150,7 @@ public final class PiMetConfig {
     }
 
     public static String getRootfsUrl(Context context) {
-        return getPrefs(context).getString(KEY_ROOTFS_MIRROR, ROOTFS_GHFAST);
+        return getPrefs(context).getString(KEY_ROOTFS_MIRROR, ROOTFS_MIRROR_AUTO);
     }
 
     public static void setRootfsUrl(Context context, String url) {

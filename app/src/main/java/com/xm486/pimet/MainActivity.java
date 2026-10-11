@@ -299,6 +299,10 @@ public class MainActivity extends AppCompatActivity {
     private View cardSettingsPorts;
     private View cardSettingsUpdate;
     private View cardSettingsRegistry;
+    private View cardSettingsRootfsMirror;
+    private View btnTestAllRootfsMirrors;
+    private TextView tvRootfsMirrorStatusHint;
+    private LinearLayout rootfsMirrorOptionsContainer;
     private View cardSettingsStorage;
     private View cardSettingsPrivileges;
     private View cardSettingsPetPreview;
@@ -591,6 +595,11 @@ public class MainActivity extends AppCompatActivity {
         cardSettingsPorts = findViewById(R.id.cardSettingsPorts);
         cardSettingsUpdate = findViewById(R.id.cardSettingsUpdate);
         cardSettingsRegistry = findViewById(R.id.cardSettingsRegistry);
+        cardSettingsRootfsMirror = findViewById(R.id.cardSettingsRootfsMirror);
+        btnTestAllRootfsMirrors = findViewById(R.id.btnTestAllRootfsMirrors);
+        tvRootfsMirrorStatusHint = findViewById(R.id.tvRootfsMirrorStatusHint);
+        rootfsMirrorOptionsContainer = findViewById(R.id.rootfsMirrorOptionsContainer);
+        initRootfsMirrorSettings();
         cardSettingsStorage = findViewById(R.id.cardSettingsStorage);
         cardSettingsPrivileges = findViewById(R.id.cardSettingsPrivileges);
         cardSettingsPetPreview = findViewById(R.id.cardSettingsPetPreview);
@@ -4159,6 +4168,9 @@ public class MainActivity extends AppCompatActivity {
         if (cardSettingsRegistry != null) {
             cardSettingsRegistry.setVisibility(category == SETTINGS_CAT_PORTS ? View.VISIBLE : View.GONE);
         }
+        if (cardSettingsRootfsMirror != null) {
+            cardSettingsRootfsMirror.setVisibility(category == SETTINGS_CAT_PORTS ? View.VISIBLE : View.GONE);
+        }
 
         // 更新中心与关于卡片合并展示
         if (cardSettingsAbout != null) {
@@ -4357,6 +4369,136 @@ public class MainActivity extends AppCompatActivity {
                     mainHandler.post(() -> Toast.makeText(this, "同步失败: " + t.getMessage(), Toast.LENGTH_SHORT).show());
                 }
             }
+        }).start();
+    }
+
+    private final Map<String, String> mirrorSpeedCache = new HashMap<>();
+
+    private void initRootfsMirrorSettings() {
+        if (btnTestAllRootfsMirrors != null) {
+            btnTestAllRootfsMirrors.setOnClickListener(v -> testAllRootfsMirrors());
+        }
+        renderRootfsMirrorOptions();
+    }
+
+    private void renderRootfsMirrorOptions() {
+        if (rootfsMirrorOptionsContainer == null) return;
+        rootfsMirrorOptionsContainer.removeAllViews();
+        ThemeManager.ThemePalette palette = ThemeManager.getEffectivePalette(this);
+        String currentMirror = PiMetConfig.getRootfsUrl(this);
+
+        // 选项 0: 自动竞速优选 (默认)
+        addRootfsMirrorOptionRow("auto", "⚡ 自动优选 (每次下载前并发真测速)", "按真实下载吞吐量智能竞速 + 动态熔断换线 [推荐]", currentMirror.equals("auto"), palette);
+
+        // 镜像选项列表
+        for (int i = 0; i < ProotManager.ROOTFS_MIRROR_PREFIXES.length; i++) {
+            String pfx = ProotManager.ROOTFS_MIRROR_PREFIXES[i];
+            String name = ProotManager.ROOTFS_MIRROR_NAMES[i];
+            addRootfsMirrorOptionRow(pfx, name, pfx, currentMirror.equals(pfx), palette);
+        }
+    }
+
+    private void addRootfsMirrorOptionRow(String mirrorKey, String title, String subtitle, boolean isSelected, ThemeManager.ThemePalette palette) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dpToPx(12), dpToPx(9), dpToPx(12), dpToPx(9));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setBackground(isSelected ? ThemeManager.createSelectedOptionDrawable(this, palette, 8f) : ThemeManager.createSecondaryButtonDrawable(this, palette, 8f));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dpToPx(6);
+        row.setLayoutParams(lp);
+
+        LinearLayout textCol = new LinearLayout(this);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        textCol.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        TextView titleTv = new TextView(this);
+        titleTv.setText(title);
+        titleTv.setTextColor(isSelected ? palette.accent : palette.text);
+        titleTv.setTextSize(12.5f);
+        titleTv.setTypeface(Typeface.DEFAULT_BOLD);
+        textCol.addView(titleTv);
+
+        TextView subTv = new TextView(this);
+        subTv.setText(subtitle);
+        subTv.setTextColor(palette.textMuted);
+        subTv.setTextSize(10.5f);
+        textCol.addView(subTv);
+
+        row.addView(textCol);
+
+        // 测速结果指示器
+        String speedStr = mirrorSpeedCache.get(mirrorKey);
+        if (speedStr != null) {
+            TextView speedBadge = new TextView(this);
+            speedBadge.setText(speedStr);
+            speedBadge.setTextColor(speedStr.contains("FAIL") ? 0xFFF85149 : palette.accent);
+            speedBadge.setTextSize(11f);
+            speedBadge.setPadding(dpToPx(6), 0, dpToPx(8), 0);
+            row.addView(speedBadge);
+        }
+
+        TextView checkTv = new TextView(this);
+        checkTv.setText(isSelected ? "✔" : "");
+        checkTv.setTextColor(palette.accent);
+        checkTv.setTextSize(15f);
+        checkTv.setTypeface(Typeface.DEFAULT_BOLD);
+        row.addView(checkTv);
+
+        row.setOnClickListener(v -> {
+            PiMetConfig.setRootfsUrl(this, mirrorKey);
+            renderRootfsMirrorOptions();
+            Toast.makeText(this, "已设置容器下载源: " + title, Toast.LENGTH_SHORT).show();
+        });
+
+        rootfsMirrorOptionsContainer.addView(row);
+    }
+
+    private void testAllRootfsMirrors() {
+        if (btnTestAllRootfsMirrors != null) {
+            btnTestAllRootfsMirrors.setEnabled(false);
+            if (btnTestAllRootfsMirrors instanceof TextView) {
+                ((TextView) btnTestAllRootfsMirrors).setText("⏳ 正在测速...");
+            }
+        }
+        Toast.makeText(this, "正在进行并发真实吞吐量测速...", Toast.LENGTH_SHORT).show();
+
+        new Thread(() -> {
+            boolean isX86 = false;
+            for (String abi : Build.SUPPORTED_ABIS) {
+                if (abi.contains("x86_64")) {
+                    isX86 = true;
+                    break;
+                }
+            }
+            final boolean finalIsX86 = isX86;
+
+            for (String pfx : ProotManager.ROOTFS_MIRROR_PREFIXES) {
+                String fullUrl = ProotManager.getFullRootfsUrl(pfx, finalIsX86);
+                ProotManager.MirrorSpeedResult res = ProotManager.testUrlRealThroughput(fullUrl);
+                if (res.success) {
+                    double kb = res.speedBps / 1024.0;
+                    String s = kb > 1024 ? String.format(java.util.Locale.US, "%.1f MB/s", kb / 1024.0) : String.format(java.util.Locale.US, "%.0f KB/s", kb);
+                    mirrorSpeedCache.put(pfx, s + " (" + res.latencyMs + "ms)");
+                } else {
+                    mirrorSpeedCache.put(pfx, "超时不可达");
+                }
+            }
+            mirrorSpeedCache.put("auto", "⚡ 动态测速");
+
+            mainHandler.post(() -> {
+                if (btnTestAllRootfsMirrors != null) {
+                    btnTestAllRootfsMirrors.setEnabled(true);
+                    if (btnTestAllRootfsMirrors instanceof TextView) {
+                        ((TextView) btnTestAllRootfsMirrors).setText("⚡ 全部并发测速");
+                    }
+                }
+                renderRootfsMirrorOptions();
+                Toast.makeText(this, "✔ 全部镜像源测速完毕！", Toast.LENGTH_SHORT).show();
+            });
         }).start();
     }
 
