@@ -159,9 +159,25 @@ public final class PiMetConfig {
         getPrefs(context).edit().putBoolean(KEY_KEEP_ALIVE, enabled).apply();
     }
 
-    // AI 模型配置 getter / setter
-    public static String getAiProvider(Context context) {
-        return getPrefs(context).getString(KEY_AI_PROVIDER, PROVIDER_DEEPSEEK);
+    // 智能体核心引擎选择
+    public static final String KEY_AGENT_ENGINE = "agent_engine";
+    public static final String ENGINE_STANDARD_PI = "standard_pi"; // 官方标准版 (@earendil-works/pi-coding-agent)
+    public static final String ENGINE_OMP = "omp"; // can1357 全能版 (oh-my-pi / @oh-my-pi/pi-coding-agent)
+
+    public static String getAgentEngine(Context context) {
+        return getPrefs(context).getString(KEY_AGENT_ENGINE, ENGINE_STANDARD_PI);
+    }
+
+    public static void setAgentEngine(Context context, String engine) {
+        getPrefs(context).edit().putString(KEY_AGENT_ENGINE, engine).apply();
+    }
+
+    public static boolean isOmpEngine(Context context) {
+        return ENGINE_OMP.equals(getAgentEngine(context));
+    }
+
+    public static String getAgentConfigDir(Context context) {
+        return isOmpEngine(context) ? "/root/.omp" : "/root/.pi/agent";
     }
 
     public static void setAiProvider(Context context, String provider) {
@@ -415,7 +431,11 @@ public final class PiMetConfig {
                 bashContent.append("# PiMet Auto-Generated Environment\n");
                 bashContent.append("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n");
                 bashContent.append("export TERM=xterm-256color\n");
-                bashContent.append("export PI_CODING_AGENT_DIR=/root/.pi/agent\n");
+                String agentCfgDir = getAgentConfigDir(context);
+                bashContent.append("export PI_CODING_AGENT_DIR=").append(agentCfgDir).append("\n");
+                if (isOmpEngine(context)) {
+                    bashContent.append("export PI_CONFIG_DIR=/root/.omp\n");
+                }
                 // 仅当用户选中的就是 OpenAI 时，才允许在终端会话导出 OPENAI_API_KEY，其它模型绝不导出
                 if (PROVIDER_OPENAI.equals(provider) && !TextUtils.isEmpty(apiKey)) {
                     bashContent.append("export OPENAI_API_KEY=\"").append(apiKey).append("\"\n");
@@ -434,7 +454,7 @@ public final class PiMetConfig {
                 }
                 writeFile(bashrc, bashContent.toString());
 
-                File agentDir = new File(rootHome, ".pi/agent");
+                File agentDir = new File(rootHome, isOmpEngine(context) ? ".omp" : ".pi/agent");
                 agentDir.mkdirs();
 
                 // 2. 合并写入 /root/.pi/agent/auth.json (增量更新，不覆盖用户已有的其它凭据)

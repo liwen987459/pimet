@@ -258,6 +258,20 @@ public class MainActivity extends AppCompatActivity {
 
     private View menuItemHelp;
 
+    // 智能体核心引擎组件 (Engine Switcher)
+    private View menuItemEngine;
+    private TextView menuTitleEngine;
+    private TextView menuSubtitleEngine;
+    private TextView menuArrowEngine;
+    private View cardSettingsEngine;
+    private TextView tvCurrentEngineBadge;
+    private View engineRowStandard;
+    private TextView tvEngineTitleStandard;
+    private TextView tvEngineCheckStandard;
+    private View engineRowOmp;
+    private TextView tvEngineTitleOmp;
+    private TextView tvEngineCheckOmp;
+
     // 界面外观与设计风格组件 (Theme)
     private View menuItemTheme;
     private TextView menuTitleTheme;
@@ -308,6 +322,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int SETTINGS_CAT_STORAGE = 4;
     private static final int SETTINGS_CAT_ABOUT = 5;
     private static final int SETTINGS_CAT_THEME = 6;
+    private static final int SETTINGS_CAT_ENGINE = 7;
     public static final int REQUEST_CODE_IMPORT_BACKUP = 2001;
     private int currentSettingsCategory = SETTINGS_CAT_PORTS;
 
@@ -545,6 +560,26 @@ public class MainActivity extends AppCompatActivity {
         menuArrowAbout = findViewById(R.id.menuArrowAbout);
 
         menuItemHelp = findViewById(R.id.menuItemHelp);
+
+        // 智能体核心引擎组件
+        menuItemEngine = findViewById(R.id.menuItemEngine);
+        menuTitleEngine = findViewById(R.id.menuTitleEngine);
+        menuSubtitleEngine = findViewById(R.id.menuSubtitleEngine);
+        menuArrowEngine = findViewById(R.id.menuArrowEngine);
+        cardSettingsEngine = findViewById(R.id.cardSettingsEngine);
+        tvCurrentEngineBadge = findViewById(R.id.tvCurrentEngineBadge);
+        engineRowStandard = findViewById(R.id.engineRowStandard);
+        tvEngineTitleStandard = findViewById(R.id.tvEngineTitleStandard);
+        tvEngineCheckStandard = findViewById(R.id.tvEngineCheckStandard);
+        engineRowOmp = findViewById(R.id.engineRowOmp);
+        tvEngineTitleOmp = findViewById(R.id.tvEngineTitleOmp);
+        tvEngineCheckOmp = findViewById(R.id.tvEngineCheckOmp);
+
+        if (menuItemEngine != null) menuItemEngine.setOnClickListener(v -> openSettingsSubWindow(SETTINGS_CAT_ENGINE));
+        if (engineRowStandard != null) engineRowStandard.setOnClickListener(v -> selectEngine(PiMetConfig.ENGINE_STANDARD_PI));
+        if (engineRowOmp != null) engineRowOmp.setOnClickListener(v -> selectEngine(PiMetConfig.ENGINE_OMP));
+
+        updateEngineUIState();
 
         menuItemTheme = findViewById(R.id.menuItemTheme);
         menuTitleTheme = findViewById(R.id.menuTitleTheme);
@@ -2717,11 +2752,38 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "正在部署中...", Toast.LENGTH_SHORT).show();
             return;
         }
+
+        // 首次部署或重新部署时，弹出核心智能体引擎选择
+        String[] engines = {
+                "🌐 官方标准版 (Pi-Web Standard) [推荐 · 原生轻巧 · 专属 ~/.pi/agent/]",
+                "⚡ can1357 全能版 (oh-my-pi / omp) [3.5万星极客核心 · 专属 ~/.omp/]"
+        };
+        int defaultIdx = PiMetConfig.isOmpEngine(this) ? 1 : 0;
+        final int[] selected = { defaultIdx };
+
+        new AlertDialog.Builder(this)
+                .setTitle("🚀 部署流水线 · 选择核心智能体")
+                .setSingleChoiceItems(engines, defaultIdx, (d, which) -> {
+                    selected[0] = which;
+                })
+                .setPositiveButton("开始部署", (d, which) -> {
+                    String chosenEngine = selected[0] == 1 ? PiMetConfig.ENGINE_OMP : PiMetConfig.ENGINE_STANDARD_PI;
+                    PiMetConfig.setAgentEngine(this, chosenEngine);
+                    updateEngineUIState();
+                    startDeployPipeline();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void startDeployPipeline() {
+        if (isDeploying) return;
         isDeploying = true;
         launchProgressBar.setVisibility(View.VISIBLE);
         updateLaunchStatusUI(false);
 
         appendLaunchLog("\u001B[33m🚀 开始执行一键部署流水线...\u001B[0m\n");
+        appendLaunchLog("• 所选引擎: " + (PiMetConfig.isOmpEngine(this) ? "can1357 全能版 (~/.omp/)" : "官方标准版 (~/.pi/agent/)") + "\n");
 
         if (!ProotManager.isRootfsInstalled(this)) {
             appendLaunchLog("\u001B[36m• 正在从镜像源提取 Linux 根文件系统...\u001B[0m\n");
@@ -2737,7 +2799,7 @@ public class MainActivity extends AppCompatActivity {
                         appendLaunchLog("\u001B[32m✔ Linux 根系统部署完成！\u001B[0m\n");
                         isDeploying = false;
                         launchProgressBar.setVisibility(View.GONE);
-                        startPiWebService();
+                        checkEngineAndStartService();
                     });
                 }
 
@@ -2753,6 +2815,27 @@ public class MainActivity extends AppCompatActivity {
             });
         } else {
             isDeploying = false;
+            checkEngineAndStartService();
+        }
+    }
+
+    private void checkEngineAndStartService() {
+        if (PiMetConfig.isOmpEngine(this) && !ProotManager.isOmpInstalled(this)) {
+            appendLaunchLog("\u001B[33m• 正在从镜像源安装 @oh-my-pi/pi-coding-agent 全能核心...\u001B[0m\n");
+            new Thread(() -> {
+                String reg = PiMetConfig.getNpmRegistry(this);
+                String cmd = "npm install -g --ignore-scripts @oh-my-pi/pi-coding-agent --registry=" + reg;
+                int code = ProotManager.executeCommandSync(this, cmd);
+                mainHandler.post(() -> {
+                    if (code == 0 || ProotManager.isOmpInstalled(this)) {
+                        appendLaunchLog("\u001B[32m✔ oh-my-pi 核心部署成功！\u001B[0m\n");
+                    } else {
+                        appendLaunchLog("\u001B[31m⚠️ oh-my-pi 安装未完成，将先以标准核心启动服务\u001B[0m\n");
+                    }
+                    startPiWebService();
+                });
+            }).start();
+        } else {
             startPiWebService();
         }
     }
@@ -4000,6 +4083,9 @@ public class MainActivity extends AppCompatActivity {
 
         String title = "⚡ 端口与网络服务";
         switch (category) {
+            case SETTINGS_CAT_ENGINE:
+                title = "🧠 智能体核心引擎";
+                break;
             case SETTINGS_CAT_PORTS:
                 title = "⚡ 端口与网络服务";
                 break;
@@ -4025,6 +4111,7 @@ public class MainActivity extends AppCompatActivity {
             tvSettingsSubWindowTitle.setText(title);
         }
 
+        updateMenuItemState(menuItemEngine, menuTitleEngine, menuArrowEngine, category == SETTINGS_CAT_ENGINE);
         updateMenuItemState(menuItemPorts, menuTitlePorts, menuArrowPorts, category == SETTINGS_CAT_PORTS);
         if (menuItemUpdate != null) {
             updateMenuItemState(menuItemUpdate, menuTitleUpdate, menuArrowUpdate, category == SETTINGS_CAT_UPDATE);
@@ -4057,6 +4144,7 @@ public class MainActivity extends AppCompatActivity {
     public void switchSettingsCategory(int category) {
         currentSettingsCategory = category;
 
+        updateMenuItemState(menuItemEngine, menuTitleEngine, menuArrowEngine, category == SETTINGS_CAT_ENGINE);
         updateMenuItemState(menuItemPorts, menuTitlePorts, menuArrowPorts, category == SETTINGS_CAT_PORTS);
         updateMenuItemState(menuItemUpdate, menuTitleUpdate, menuArrowUpdate, category == SETTINGS_CAT_UPDATE);
         updateMenuItemState(menuItemPet, menuTitlePet, menuArrowPet, category == SETTINGS_CAT_PET);
@@ -4090,6 +4178,11 @@ public class MainActivity extends AppCompatActivity {
 
     private void applySettingsCardsVisibility() {
         int category = currentSettingsCategory;
+
+        // 核心引擎卡片
+        if (cardSettingsEngine != null) {
+            cardSettingsEngine.setVisibility(category == SETTINGS_CAT_ENGINE ? View.VISIBLE : View.GONE);
+        }
 
         // 端口与网络类卡片
         if (cardSettingsPorts != null) {
@@ -5238,6 +5331,76 @@ public class MainActivity extends AppCompatActivity {
         physicsContainer.addView(column);
     }
 
+    // ================= 智能体核心引擎管理 (Engine Management) =================
+    private void selectEngine(String engineId) {
+        String current = PiMetConfig.getAgentEngine(this);
+        if (current.equals(engineId)) return;
+
+        boolean isOmp = PiMetConfig.ENGINE_OMP.equals(engineId);
+        if (isOmp && !ProotManager.isOmpInstalled(this)) {
+            // 需要先在后台下载安装 omp
+            new AlertDialog.Builder(this)
+                    .setTitle("⚡ 安装 can1357 / oh-my-pi 核心")
+                    .setMessage("检测到尚未安装 omp 全能核心。\n\n是否立即从 npm 镜像源拉取 @oh-my-pi/pi-coding-agent 并配置独立沙盒目录？")
+                    .setPositiveButton("立即安装", (d, w) -> {
+                        Toast.makeText(this, "正在安装 oh-my-pi 核心，请稍候...", Toast.LENGTH_SHORT).show();
+                        appendLaunchLog("\u001B[33m• 正在从镜像源安装 @oh-my-pi/pi-coding-agent 全能核心...\u001B[0m\n");
+                        new Thread(() -> {
+                            String reg = PiMetConfig.getNpmRegistry(this);
+                            String cmd = "npm install -g --ignore-scripts @oh-my-pi/pi-coding-agent --registry=" + reg;
+                            int code = ProotManager.executeCommandSync(this, cmd);
+                            mainHandler.post(() -> {
+                                if (code == 0 || ProotManager.isOmpInstalled(this)) {
+                                    PiMetConfig.setAgentEngine(this, engineId);
+                                    updateEngineUIState();
+                                    appendLaunchLog("\u001B[32m✔ oh-my-pi 核心安装成功，已切换至独立沙盒: ~/.omp/\u001B[0m\n");
+                                    Toast.makeText(this, "✔ oh-my-pi 核心已就绪！", Toast.LENGTH_SHORT).show();
+                                    askRestartForEngine();
+                                } else {
+                                    appendLaunchLog("\u001B[31m❌ 安装失败，退出码: " + code + "\u001B[0m\n");
+                                    Toast.makeText(this, "安装失败，请检查网络或在详细日志查看输出", Toast.LENGTH_LONG).show();
+                                }
+                            });
+                        }).start();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+            return;
+        }
+
+        PiMetConfig.setAgentEngine(this, engineId);
+        updateEngineUIState();
+        Toast.makeText(this, "已切换为: " + (isOmp ? "can1357 全能版 (oh-my-pi)" : "官方标准版 (Pi-Web)"), Toast.LENGTH_SHORT).show();
+        askRestartForEngine();
+    }
+
+    private void askRestartForEngine() {
+        if (isPiWebAlive) {
+            new AlertDialog.Builder(this)
+                    .setTitle("🔄 重启服务以生效")
+                    .setMessage("核心引擎已切换。沙盒配置与会话环境已重定向。\n是否立即重启 Pi-Web 服务？")
+                    .setPositiveButton("立即重启", (d, w) -> restartPiWebService())
+                    .setNegativeButton("稍后手动重启", null)
+                    .show();
+        }
+    }
+
+    private void updateEngineUIState() {
+        String current = PiMetConfig.getAgentEngine(this);
+        boolean isOmp = PiMetConfig.ENGINE_OMP.equals(current);
+        ThemeManager.ThemePalette palette = ThemeManager.getEffectivePalette(this);
+
+        if (tvCurrentEngineBadge != null) {
+            tvCurrentEngineBadge.setText(isOmp ? "can1357 全能版" : "官方标准版");
+        }
+        if (menuSubtitleEngine != null) {
+            menuSubtitleEngine.setText(isOmp ? "当前: can1357 全能版 (~/.omp/)" : "当前: 官方标准版 (~/.pi/agent/)");
+        }
+
+        updateThemeOptionRow(engineRowStandard, tvEngineTitleStandard, tvEngineCheckStandard, !isOmp, palette);
+        updateThemeOptionRow(engineRowOmp, tvEngineTitleOmp, tvEngineCheckOmp, isOmp, palette);
+    }
+
     // ================= 主题与外观管理 (Theme Management) =================
     private void selectTheme(String themeId) {
         ThemeManager.setThemePreference(this, themeId);
@@ -5338,6 +5501,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // 刷新设置条目菜单状态
+        updateMenuItemState(menuItemEngine, menuTitleEngine, menuArrowEngine, currentSettingsCategory == SETTINGS_CAT_ENGINE);
         updateMenuItemState(menuItemPorts, menuTitlePorts, menuArrowPorts, currentSettingsCategory == SETTINGS_CAT_PORTS);
         if (menuItemUpdate != null) {
             updateMenuItemState(menuItemUpdate, menuTitleUpdate, menuArrowUpdate, currentSettingsCategory == SETTINGS_CAT_UPDATE);

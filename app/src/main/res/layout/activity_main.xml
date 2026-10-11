@@ -1118,11 +1118,65 @@
                         android:textColor="#6E7681"
                         android:textSize="10.5sp" />
 
+                    <!-- 0. 智能体核心引擎选择 -->
+                    <LinearLayout
+                        android:id="@+id/menuItemEngine"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="#161B22"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="10dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="🧠"
+                            android:textSize="16sp" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/menuTitleEngine"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="智能体核心引擎"
+                                android:textColor="#F0F6FC"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/menuSubtitleEngine"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="1dp"
+                                android:text="官方标准版 (Pi-Web) / can1357 全能版 (oh-my-pi)"
+                                android:textColor="#8B949E"
+                                android:textSize="10.5sp" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/menuArrowEngine"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="›"
+                            android:textColor="#8B949E"
+                            android:textSize="16sp" />
+                    </LinearLayout>
+
                     <!-- 1. 端口与网络服务 -->
                     <LinearLayout
                         android:id="@+id/menuItemPorts"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
                         android:background="#161B22"
                         android:clickable="true"
                         android:focusable="true"
@@ -1653,6 +1707,175 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:padding="16dp">
+
+                <!-- 🧠 智能体核心引擎选择与切换卡片 -->
+                <LinearLayout
+                    android:id="@+id/cardSettingsEngine"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_card_modern"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="🧠"
+                            android:textSize="18sp" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:layout_weight="1"
+                            android:text="智能体核心引擎 (双核热切换)"
+                            android:textColor="#F0F6FC"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvCurrentEngineBadge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_chip_selected"
+                            android:paddingStart="8dp"
+                            android:paddingTop="3dp"
+                            android:paddingEnd="8dp"
+                            android:paddingBottom="3dp"
+                            android:text="官方标准版"
+                            android:textColor="#58A6FF"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="各引擎拥有完全隔离的会话记录与插件配置，公共代码工作区无缝互通，彻底杜绝数据相互污染。"
+                        android:textColor="#8B949E"
+                        android:textSize="11.5sp" />
+
+                    <!-- 引擎选项列表 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:orientation="vertical">
+
+                        <!-- 引擎 A: 官方标准版 -->
+                        <LinearLayout
+                            android:id="@+id/engineRowStandard"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_btn_secondary"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="🌐"
+                                android:textSize="18sp" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="10dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:id="@+id/tvEngineTitleStandard"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="官方标准版 (Pi-Web Standard) [推荐]"
+                                    android:textColor="#F0F6FC"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="原生轻巧、官方纯净、稳定省电 · 专属空间: ~/.pi/agent/"
+                                    android:textColor="#8B949E"
+                                    android:textSize="10.5sp" />
+                            </LinearLayout>
+
+                            <TextView
+                                android:id="@+id/tvEngineCheckStandard"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="✔"
+                                android:textColor="#58A6FF"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- 引擎 B: can1357 全能版 (oh-my-pi / omp) -->
+                        <LinearLayout
+                            android:id="@+id/engineRowOmp"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:background="@drawable/bg_btn_secondary"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="⚡"
+                                android:textSize="18sp" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="10dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:id="@+id/tvEngineTitleOmp"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="can1357 全能版 (oh-my-pi / omp)"
+                                    android:textColor="#F0F6FC"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="3.5万星极客内核、31个全能工具、高阶架构编排 · 专属空间: ~/.omp/"
+                                    android:textColor="#8B949E"
+                                    android:textSize="10.5sp" />
+                            </LinearLayout>
+
+                            <TextView
+                                android:id="@+id/tvEngineCheckOmp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text=""
+                                android:textColor="#58A6FF"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
 
                 <!-- 多服务自定义端口设置卡片 -->
                 <LinearLayout
@@ -3267,7 +3490,7 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="2dp"
-                                    android:text="当前版本: v1.6.2"
+                                    android:text="当前版本: v1.6.3"
                                     android:textColor="#8B949E"
                                     android:textSize="11sp" />
                             </LinearLayout>

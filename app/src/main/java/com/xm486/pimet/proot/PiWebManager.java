@@ -183,9 +183,16 @@ public final class PiWebManager {
                     }
                 });
 
+                String agentCfgDir = PiMetConfig.getAgentConfigDir(context);
+                String extraEnv = "export PI_CODING_AGENT_DIR=" + agentCfgDir + "; ";
+                if (PiMetConfig.isOmpEngine(context)) {
+                    extraEnv += "export PI_CONFIG_DIR=/root/.omp; ";
+                }
+
                 List<String> startCmd = Arrays.asList(
                         "/bin/bash", "-c",
                         "export PORT=" + port + "; " +
+                        extraEnv +
                         "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH; " +
                         "if command -v pi-web >/dev/null 2>&1; then exec pi-web --no-open -p " + port + " -H 127.0.0.1; " +
                         "elif [ -f /usr/local/lib/node_modules/@agegr/pi-web/bin/pi-web.js ]; then exec node /usr/local/lib/node_modules/@agegr/pi-web/bin/pi-web.js --no-open -p " + port + " -H 127.0.0.1; " +
