@@ -364,7 +364,7 @@ public final class ProotManager {
                         if (callback != null) callback.onProgress("连接容器镜像源: " + urlStr, 5);
                         downloadWithResume(urlStr, targetTarball, (percent) -> {
                             if (callback != null) {
-                                callback.onProgress("正在下载 Linux 容器系统 (" + percent + "%)...", percent * 70 / 100);
+                                callback.onProgress("正在下载 Linux 容器系统 (" + percent + "%)", percent * 70 / 100);
                             }
                         });
                         if (targetTarball.exists() && targetTarball.length() > 100 * 1024 * 1024) {
@@ -759,9 +759,9 @@ public final class ProotManager {
         long existingLength = target.exists() ? target.length() : 0;
         HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
         conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; PiMet) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36");
-        conn.setConnectTimeout(20000);
-        conn.setReadTimeout(30000);
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
+        conn.setConnectTimeout(8000);
+        conn.setReadTimeout(12000);
 
         if (existingLength > 0) {
             conn.setRequestProperty("Range", "bytes=" + existingLength + "-");
@@ -799,17 +799,24 @@ public final class ProotManager {
 
         byte[] buf = new byte[65536];
         long downloaded = existingLength;
-        int lastPercent = 0;
+        int lastPercent = -1;
+        long lastProgressTime = System.currentTimeMillis();
+        long lastReadTime = System.currentTimeMillis();
+
         try (InputStream in = new BufferedInputStream(conn.getInputStream());
              FileOutputStream fos = new FileOutputStream(target, append)) {
             int read;
             while ((read = in.read(buf)) != -1) {
                 fos.write(buf, 0, read);
                 downloaded += read;
+                long now = System.currentTimeMillis();
+                lastReadTime = now;
+
                 if (totalLength > 0) {
                     int percent = (int) (downloaded * 100 / totalLength);
-                    if (percent != lastPercent) {
+                    if (percent != lastPercent || (now - lastProgressTime > 300)) {
                         lastPercent = percent;
+                        lastProgressTime = now;
                         if (cb != null) cb.onProgress(percent);
                     }
                 }

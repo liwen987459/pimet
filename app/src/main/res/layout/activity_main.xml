@@ -82,15 +82,51 @@
                         android:textColor="#8B949E"
                         android:textSize="12sp" />
 
-                    <!-- 部署/安装进度条 -->
-                    <ProgressBar
-                        android:id="@+id/launchProgressBar"
-                        style="?android:attr/progressBarStyleHorizontal"
+                    <!-- 部署/安装进度条区域 (包含精确进度条与百分比/状态指示) -->
+                    <LinearLayout
+                        android:id="@+id/launchProgressContainer"
                         android:layout_width="match_parent"
-                        android:layout_height="4dp"
+                        android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:indeterminate="true"
-                        android:visibility="gone" />
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/launchProgressLabelTv"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="正在执行操作..."
+                                android:textColor="#58A6FF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/launchProgressPercentTv"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0%"
+                                android:textColor="#58A6FF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <ProgressBar
+                            android:id="@+id/launchProgressBar"
+                            style="?android:attr/progressBarStyleHorizontal"
+                            android:layout_width="match_parent"
+                            android:layout_height="6dp"
+                            android:layout_marginTop="5dp"
+                            android:max="100"
+                            android:progress="0"
+                            android:progressDrawable="@drawable/progress_launch" />
+                    </LinearLayout>
 
                     <!-- 启动前端口自定义快捷栏 -->
                     <LinearLayout

@@ -202,6 +202,10 @@ public class MainActivity extends AppCompatActivity {
     private TextView launchPortBadge;
     private TextView launchSubtitleTv;
     private ProgressBar launchProgressBar;
+    private View launchProgressContainer;
+    private TextView launchProgressLabelTv;
+    private TextView launchProgressPercentTv;
+    private ScrollView launchConsoleScroll;
     private TextView btnLaunchMain;
     private View btnLaunchRestart;
     private View btnLaunchStop;
@@ -513,7 +517,11 @@ public class MainActivity extends AppCompatActivity {
         launchStateTv = findViewById(R.id.launchStateTv);
         launchPortBadge = findViewById(R.id.launchPortBadge);
         launchSubtitleTv = findViewById(R.id.launchSubtitleTv);
+        launchProgressContainer = findViewById(R.id.launchProgressContainer);
+        launchProgressLabelTv = findViewById(R.id.launchProgressLabelTv);
+        launchProgressPercentTv = findViewById(R.id.launchProgressPercentTv);
         launchProgressBar = findViewById(R.id.launchProgressBar);
+        launchConsoleScroll = findViewById(R.id.launchConsoleScroll);
         btnLaunchMain = findViewById(R.id.btnLaunchMain);
         btnLaunchRestart = findViewById(R.id.btnLaunchRestart);
         btnLaunchStop = findViewById(R.id.btnLaunchStop);
@@ -2422,6 +2430,47 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 launchLogTv.append(message);
             }
+            if (launchConsoleScroll != null) {
+                launchConsoleScroll.post(() -> launchConsoleScroll.fullScroll(View.FOCUS_DOWN));
+            }
+        });
+    }
+
+    private void showLaunchProgress(String label, int percent) {
+        mainHandler.post(() -> {
+            if (launchProgressContainer != null) {
+                launchProgressContainer.setVisibility(View.VISIBLE);
+            }
+            if (launchProgressLabelTv != null && label != null) {
+                launchProgressLabelTv.setText(label);
+            }
+            if (launchProgressBar != null) {
+                if (percent >= 0) {
+                    launchProgressBar.setIndeterminate(false);
+                    launchProgressBar.setProgress(Math.min(100, Math.max(0, percent)));
+                } else {
+                    launchProgressBar.setIndeterminate(true);
+                }
+            }
+            if (launchProgressPercentTv != null) {
+                if (percent >= 0) {
+                    launchProgressPercentTv.setVisibility(View.VISIBLE);
+                    launchProgressPercentTv.setText(percent + "%");
+                } else {
+                    launchProgressPercentTv.setVisibility(View.GONE);
+                }
+            }
+        });
+    }
+
+    private void hideLaunchProgress() {
+        mainHandler.post(() -> {
+            if (launchProgressContainer != null) {
+                launchProgressContainer.setVisibility(View.GONE);
+            }
+            if (launchProgressBar != null) {
+                launchProgressBar.setProgress(0);
+            }
         });
     }
 
@@ -2608,7 +2657,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         isPiWebActionInProgress = true;
-        launchProgressBar.setVisibility(View.VISIBLE);
+        showLaunchProgress("正在拉起服务...", -1);
         launchStateTv.setText("正在拉起服务...");
         launchStatusDot.setBackgroundResource(R.drawable.bg_status_dot_yellow);
 
@@ -2621,6 +2670,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onProgress(String message, int percent) {
                 mainHandler.post(() -> {
+                    showLaunchProgress(message, percent);
                     if (percent >= 0) {
                         launchSubtitleTv.setText(message + " (" + percent + "%)");
                     } else {
@@ -2632,7 +2682,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onStarted() {
                 isPiWebActionInProgress = false;
-                launchProgressBar.setVisibility(View.GONE);
+                hideLaunchProgress();
                 isPiWebAlive = true;
                 PiMetService.start(MainActivity.this);
                 updateLaunchStatusUI(true);
@@ -2648,7 +2698,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onError(String error) {
                 isPiWebActionInProgress = false;
-                launchProgressBar.setVisibility(View.GONE);
+                hideLaunchProgress();
                 isPiWebAlive = false;
                 updateLaunchStatusUI(false);
                 Toast.makeText(MainActivity.this, "启动失败: " + error, Toast.LENGTH_LONG).show();
@@ -2667,7 +2717,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         isPiWebActionInProgress = true;
-        launchProgressBar.setVisibility(View.VISIBLE);
+        showLaunchProgress("正在重启服务...", -1);
         launchStateTv.setText("正在重启服务...");
         launchStatusDot.setBackgroundResource(R.drawable.bg_status_dot_yellow);
         Toast.makeText(this, "正在安全重启 Pi-Web...", Toast.LENGTH_SHORT).show();
@@ -2687,6 +2737,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onProgress(String message, int percent) {
                 mainHandler.post(() -> {
+                    showLaunchProgress(message, percent);
                     if (percent >= 0) {
                         launchSubtitleTv.setText(message + " (" + percent + "%)");
                     } else {
@@ -2698,7 +2749,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onStarted() {
                 isPiWebActionInProgress = false;
-                launchProgressBar.setVisibility(View.GONE);
+                hideLaunchProgress();
                 isPiWebAlive = true;
                 PiMetService.start(MainActivity.this);
                 updateLaunchStatusUI(true);
@@ -2714,7 +2765,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onError(String error) {
                 isPiWebActionInProgress = false;
-                launchProgressBar.setVisibility(View.GONE);
+                hideLaunchProgress();
                 isPiWebAlive = false;
                 updateLaunchStatusUI(false);
                 Toast.makeText(MainActivity.this, "重启失败: " + error, Toast.LENGTH_LONG).show();
@@ -2734,7 +2785,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         isPiWebActionInProgress = true;
-        launchProgressBar.setVisibility(View.VISIBLE);
+        showLaunchProgress("正在停止服务...", -1);
         launchStateTv.setText("正在停止服务...");
         launchStatusDot.setBackgroundResource(R.drawable.bg_status_dot_yellow);
 
@@ -2748,7 +2799,7 @@ public class MainActivity extends AppCompatActivity {
             isPiWebAlive = false;
             PiMetService.stop(this);
             isPiWebActionInProgress = false;
-            launchProgressBar.setVisibility(View.GONE);
+            hideLaunchProgress();
             updateLaunchStatusUI(false);
             Toast.makeText(this, "Pi-Web 服务已安全停止", Toast.LENGTH_SHORT).show();
             refreshLaunchLog();
@@ -2943,7 +2994,7 @@ public class MainActivity extends AppCompatActivity {
     private void startDeployPipeline() {
         if (isDeploying) return;
         isDeploying = true;
-        launchProgressBar.setVisibility(View.VISIBLE);
+        showLaunchProgress("准备执行一键部署流水线...", -1);
         updateLaunchStatusUI(false);
 
         appendLaunchLog("\u001B[33m🚀 开始执行一键部署流水线...\u001B[0m\n");
@@ -2954,7 +3005,10 @@ public class MainActivity extends AppCompatActivity {
             ProotManager.installRootfs(this, new ProotManager.InstallCallback() {
                 @Override
                 public void onProgress(String message, int percent) {
-                    mainHandler.post(() -> appendLaunchLog("• " + message + " " + percent + "%\n"));
+                    mainHandler.post(() -> {
+                        showLaunchProgress(message, percent);
+                        appendLaunchLog("• " + message + " " + percent + "%\n");
+                    });
                 }
 
                 @Override
@@ -2962,7 +3016,7 @@ public class MainActivity extends AppCompatActivity {
                     mainHandler.post(() -> {
                         appendLaunchLog("\u001B[32m✔ Linux 根系统部署完成！\u001B[0m\n");
                         isDeploying = false;
-                        launchProgressBar.setVisibility(View.GONE);
+                        hideLaunchProgress();
                         checkEngineAndStartService();
                     });
                 }
@@ -2971,7 +3025,7 @@ public class MainActivity extends AppCompatActivity {
                 public void onError(String error) {
                     mainHandler.post(() -> {
                         isDeploying = false;
-                        launchProgressBar.setVisibility(View.GONE);
+                        hideLaunchProgress();
                         appendLaunchLog("\u001B[31m❌ 根系统部署失败: " + error + "\u001B[0m\n");
                         updateLaunchStatusUI(false);
                     });
@@ -5688,6 +5742,13 @@ public class MainActivity extends AppCompatActivity {
         }
         updateLaunchPetUI();
         updateLaunchStatusUI(isPiWebAlive);
+
+        if (launchProgressLabelTv != null) {
+            launchProgressLabelTv.setTextColor(palette.accent);
+        }
+        if (launchProgressPercentTv != null) {
+            launchProgressPercentTv.setTextColor(palette.accent);
+        }
 
         // 刷新悬浮球与悬浮菜单样式
         if (floatingBall != null) {
