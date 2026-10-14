@@ -1087,14 +1087,24 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private OperitState mainLastPetState = null;
+
+    /**
+     * 主界面自己的 Pi-Web 状态监听：只在界面可见时运行（onPause 停止），重复进入不再重建连接；
+     * 只播报真实转折（开始思考/调用工具/完成/出错），不再把每个 SSE 事件或重连时的「空闲」当成「任务完成」。
+     */
     public void initPetMonitor() {
         int port = PiMetConfig.getWebPort(this);
+        if (piWebMonitor != null && piWebMonitor.isRunning() && piWebMonitorPort == port) return;
         if (piWebMonitor != null) {
             piWebMonitor.stop();
         }
+        piWebMonitorPort = port;
         piWebMonitor = new PiWebMonitor(this, port, new PiWebMonitor.Listener() {
             @Override
             public void onSnapshot(OperitState.Snapshot snapshot) {
+                OperitState prev = mainLastPetState;
+                mainLastPetState = snapshot.state;
                 lastPetSnapshot = snapshot;
                 updateFloatingPetChatCardStatus();
                 if (!PetRegistry.isPetEnabled(MainActivity.this) && !isFullscreen) {
@@ -1103,6 +1113,22 @@ public class MainActivity extends AppCompatActivity {
                 if (floatingPetView != null) {
                     floatingPetView.updateState(snapshot.state);
                 }
+                String tr = snapshot.transition;
+                if ("error".equals(tr)) {
+                    if (floatingPetView != null) floatingPetView.playOneShot("failed");
+                    showPetBubble("😱 任务出错啦: " + (TextUtils.isEmpty(snapshot.errorMessage) ? "未知错误" : snapshot.errorMessage));
+                    return;
+                }
+                if ("completed".equals(tr)) {
+                    if (floatingPetView != null) floatingPetView.playOneShot("jumping");
+                    showPetBubble("🎉 任务完成！随时待命");
+                    return;
+                }
+                if ("aborted".equals(tr)) {
+                    showPetBubble("⏹ 任务已中止");
+                    return;
+                }
+                if (prev == snapshot.state) return; // 同一状态的后续事件不重复播报
                 switch (snapshot.state) {
                     case THINKING:
                         showPetBubble("🤔 Agent 正在深度思考中...");
@@ -1114,15 +1140,6 @@ public class MainActivity extends AppCompatActivity {
                     case RESPONDING:
                         showPetBubble("💬 Agent 正在组织回复...");
                         break;
-                    case IDLE:
-                        if (floatingPetView != null) {
-                            floatingPetView.playOneShot("jumping");
-                        }
-                        showPetBubble("🎉 任务完成！随时待命");
-                        break;
-                    case ERROR:
-                        showPetBubble("😱 任务出错啦: " + snapshot.lastTool);
-                        break;
                     default:
                         break;
                 }
@@ -1132,6 +1149,21 @@ public class MainActivity extends AppCompatActivity {
             public void onError(String message) {}
         });
         piWebMonitor.start();
+    }
+
+    private int piWebMonitorPort = -1;
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // 后台时停掉主界面的监听与网页渲染（桌宠悬浮窗有自己的监控，不受影响）
+        if (piWebMonitor != null) {
+            piWebMonitor.stop();
+            piWebMonitor = null;
+        }
+        try {
+            if (piWebWebView != null) piWebWebView.onPause();
+        } catch (Throwable ignored) {}
     }
 
     public void showPetMenuDialog() {
@@ -1883,6 +1915,50 @@ public class MainActivity extends AppCompatActivity {
         togglePetChatCard(true);
     }
 
+    // ---- 聊天卡「停止」打断 ----
+    private volatile boolean petChatRunning = false;
+    private volatile boolean petChatCancelled = false;
+    private volatile HttpURLConnection petChatConn;
+    private volatile String petChatSessionId;
+
+    private void setPetChatRunning(boolean running) {
+        petChatRunning = running;
+        mainHandler.post(() -> {
+            if (btnSendFloatPetChat instanceof TextView) {
+                ((TextView) btnSendFloatPetChat).setText(running ? "停止" : "发送");
+            }
+        });
+    }
+
+    /** 打断当前 Pi-Web 回复：通知 Agent abort 并断开事件流 */
+    private void interruptPetChat() {
+        petChatCancelled = true;
+        final HttpURLConnection c = petChatConn;
+        final String sid = petChatSessionId;
+        final int port = PiMetConfig.getWebPort(this);
+        new Thread(() -> {
+            if (sid != null) {
+                HttpURLConnection a = null;
+                try {
+                    a = (HttpURLConnection) new URL("http://127.0.0.1:" + port + "/api/agent/" + sid).openConnection();
+                    a.setRequestMethod("POST");
+                    a.setDoOutput(true);
+                    a.setConnectTimeout(2000);
+                    a.setReadTimeout(3000);
+                    a.setRequestProperty("Content-Type", "application/json");
+                    a.getOutputStream().write("{\"type\":\"abort\"}".getBytes(StandardCharsets.UTF_8));
+                    a.getResponseCode();
+                } catch (Throwable ignored) {
+                } finally {
+                    if (a != null) try { a.disconnect(); } catch (Throwable ignored) {}
+                }
+            }
+            if (c != null) try { c.disconnect(); } catch (Throwable ignored) {}
+        }).start();
+        setPetChatRunning(false);
+        showPetBubble("⏹ 已打断");
+    }
+
     private void sendPetChatMessage(String question) {
         if (TextUtils.isEmpty(question)) return;
         String q = question.trim();
@@ -2062,6 +2138,10 @@ public class MainActivity extends AppCompatActivity {
         new Thread(() -> {
             try {
                 if (PetRegistry.TARGET_PIWEB.equals(activeTarget)) {
+                    petChatCancelled = false;
+                    petChatSessionId = null;
+                    setPetChatRunning(true);
+                    try {
                     int piwebPort = PiMetConfig.getWebPort(MainActivity.this);
                     if (!PortDetector.isPortOpen("127.0.0.1", piwebPort, 450)) {
                         mainHandler.post(() -> showPetBubble("⚠️ Pi-Web 未在端口 " + piwebPort + " 启动，请点击上方「🚀 直达工作台」启动服务~"));
@@ -2130,11 +2210,14 @@ public class MainActivity extends AppCompatActivity {
                         return;
                     }
 
+                    petChatSessionId = sessionId;
+                    if (petChatCancelled) return;
                     mainHandler.post(() -> showPetBubble("💭 Pi-Web Agent 正在思考中..."));
 
                     // 2. 监听 SSE 事件流实时更新桌宠动画与气泡
                     URL sseUrl = new URL("http://127.0.0.1:" + piwebPort + "/api/agent/" + sessionId + "/events");
                     HttpURLConnection sseConn = (HttpURLConnection) sseUrl.openConnection();
+                    petChatConn = sseConn;
                     sseConn.setRequestProperty("Accept", "text/event-stream");
                     sseConn.setConnectTimeout(4000);
                     sseConn.setReadTimeout(75000);
@@ -2179,10 +2262,14 @@ public class MainActivity extends AppCompatActivity {
                                 } catch (Throwable ignored) {}
                             }
                         }
+                    } catch (Throwable readErr) {
+                        if (!petChatCancelled) throw readErr;
                     } finally {
                         sseConn.disconnect();
+                        petChatConn = null;
                     }
 
+                    if (petChatCancelled) return;
                     mainHandler.post(() -> {
                         if (floatingPetView != null) floatingPetView.playOneShot("jumping");
                         if (answer.length() > 0) {
@@ -2192,6 +2279,9 @@ public class MainActivity extends AppCompatActivity {
                         }
                     });
                     return;
+                    } finally {
+                        if (!petChatCancelled) setPetChatRunning(false);
+                    }
                 }
                 if (PetRegistry.TARGET_OPERIT.equals(activeTarget)) {
                     int operitPort = PetRegistry.getOperitPort(MainActivity.this);
@@ -2699,9 +2789,7 @@ public class MainActivity extends AppCompatActivity {
                 refreshLaunchLog();
 
                 // 核心预加载：服务一就绪，后台立刻触发静默渲染，用户点击进入工作台秒开呈现
-                if (piWebWebView != null) {
-                    piWebWebView.loadUrl(getPiWebUrl());
-                }
+                warmThenLoadPiWeb(false);
             }
 
             @Override
@@ -2766,9 +2854,7 @@ public class MainActivity extends AppCompatActivity {
                 refreshLaunchLog();
 
                 // 核心预加载：服务就绪瞬间立即静默加载 WebView，进入工作台 0 秒呈现
-                if (piWebWebView != null) {
-                    piWebWebView.loadUrl(getPiWebUrl());
-                }
+                warmThenLoadPiWeb(false);
             }
 
             @Override
@@ -2936,11 +3022,15 @@ public class MainActivity extends AppCompatActivity {
                         null
                     );
 
+                    // 自愈：页面能滚动/缩放却点不动 = 前端 JS 没有激活（常见于 Pi-Web 升级后 Service Worker 仍提供旧脚本）
+                    schedulePiWebHydrationCheck(view, url);
+
                     // 深度自愈：检测页面是否由于 Node.js 启动延迟被 Service Worker 错误截获为 offline.html
                     view.evaluateJavascript(
                         "(function() { " +
                         "  var h1 = document.querySelector('h1'); " +
-                        "  return (document.title.indexOf('offline') !== -1 || (h1 && h1.innerText.indexOf('offline') !== -1)); " +
+                        "  var t = (document.title + ' ' + (h1 ? h1.innerText : '')).toLowerCase(); " +
+                        "  return t.indexOf('offline') !== -1; " +
                         "})()",
                         result -> {
                             if ("true".equalsIgnoreCase(result)) {
@@ -2953,6 +3043,21 @@ public class MainActivity extends AppCompatActivity {
         });
 
         piWebWebView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(android.webkit.ConsoleMessage cm) {
+                try {
+                    if (cm != null && cm.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                        String m = cm.message() == null ? "" : cm.message();
+                        if (m.contains("ChunkLoadError") || m.contains("Loading chunk")
+                                || m.contains("Failed to fetch dynamically imported module")
+                                || m.contains("Failed to load chunk")) {
+                            healPiWebPage("前端脚本加载失败");
+                        }
+                    }
+                } catch (Throwable ignored) {}
+                return super.onConsoleMessage(cm);
+            }
+
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 if (newProgress < 100) {
@@ -3211,6 +3316,10 @@ public class MainActivity extends AppCompatActivity {
         }
         if (btnSendFloatPetChat != null) {
             btnSendFloatPetChat.setOnClickListener(v -> {
+                if (petChatRunning) {
+                    interruptPetChat();
+                    return;
+                }
                 String q = inputFloatPetChat != null ? inputFloatPetChat.getText().toString().trim() : "";
                 if (q.isEmpty()) return;
                 if (inputFloatPetChat != null) inputFloatPetChat.setText("");
@@ -3276,6 +3385,13 @@ public class MainActivity extends AppCompatActivity {
             floatingMenuVertical.setVisibility(View.GONE);
             openExternalBrowser();
         });
+        View btnFloatTerminal = findViewById(R.id.btnFloatTerminal);
+        if (btnFloatTerminal != null) {
+            btnFloatTerminal.setOnClickListener(v -> {
+                floatingMenuVertical.setVisibility(View.GONE);
+                com.xm486.pimet.terminal.FloatingTerminal.toggle(MainActivity.this);
+            });
+        }
         piWebWakeBtn.setOnClickListener(v -> startPiWebService());
     }
 
@@ -3515,9 +3631,10 @@ public class MainActivity extends AppCompatActivity {
 
         // 关键秒开优化：若服务已知在运行，或者 WebView 已在目标地址，主线程同步直接切出工作台，毫秒级即现！
         if (isPiWebAlive || (piWebWebView != null && piWebWebView.getUrl() != null && piWebWebView.getUrl().startsWith("http://127.0.0.1:" + port))) {
-            showPiWebOffline(false);
             if (piWebWebView != null && (piWebWebView.getUrl() == null || !piWebWebView.getUrl().startsWith("http://127.0.0.1:" + port))) {
-                piWebWebView.loadUrl(url);
+                warmThenLoadPiWeb(true);
+            } else if (!isPiWebLoading) {
+                showPiWebOffline(false);
             }
         }
 
@@ -3537,11 +3654,15 @@ public class MainActivity extends AppCompatActivity {
             mainHandler.post(() -> {
                 isPiWebAlive = isReady;
                 if (isReady) {
-                    showPiWebOffline(false);
                     if (piWebWebView != null && (piWebWebView.getUrl() == null || !piWebWebView.getUrl().startsWith("http://127.0.0.1:" + port))) {
-                        piWebWebView.loadUrl(url);
+                        warmThenLoadPiWeb(true);
+                    } else if (!isPiWebLoading) {
+                        showPiWebOffline(false);
                     }
                     // 目标网页已正确加载，切勿调用 reload()，以完整保留 WebView 内存状态
+                } else if (isPiWebActionInProgress || isOfflineRecovering) {
+                    // 服务正在启动：显示「正在加载」并等首页就绪，而不是「未在运行」
+                    warmThenLoadPiWeb(true);
                 } else {
                     showPiWebOffline(true);
                 }
@@ -3549,38 +3670,123 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
+    private long lastPiWebHealAt = 0;
+
+    private static final String PIWEB_HYDRATION_JS = "(function(){try{" +
+            "function hasReact(n){if(!n)return false;for(var k in n){if(k.indexOf('__react')===0)return true;}return false;}" +
+            "var tt=((document.title||'')+' '+((document.querySelector('h1')||{}).innerText||'')).toLowerCase();" +
+            "if(tt.indexOf('offline')!==-1)return 'offline';" +
+            "if(hasReact(document)||hasReact(document.documentElement)||hasReact(document.body))return 'ok';" +
+            "var all=document.querySelectorAll('button,a,input,textarea,[role=button]');" +
+            "for(var j=0;j<Math.min(all.length,40);j++){if(hasReact(all[j]))return 'ok';}" +
+            "return all.length?'dead':'empty';}catch(e){return 'err';}})()";
+
+    /** 页面加载完 6 秒后检查前端是否已激活（React 已挂载）；未激活则清缓存重载 */
+    private void schedulePiWebHydrationCheck(WebView view, String url) {
+        if (view == null || url == null) return;
+        view.postDelayed(() -> {
+            String cur = view.getUrl();
+            if (cur == null || !cur.equals(url)) return;
+            view.evaluateJavascript(PIWEB_HYDRATION_JS, r -> {
+                if ("\"offline\"".equals(r)) handlePiWebOfflineDetected();
+                else if ("\"dead\"".equals(r)) healPiWebPage("页面按钮未激活");
+            });
+        }, 6000);
+    }
+
+    /** 清除 WebView 缓存、注销 Service Worker 与 Cache Storage 后重新加载（3 分钟内最多一次，防止循环） */
+    private void healPiWebPage(String reason) {
+        // 服务还没就绪时页面本来就不可用：交给离线自动重连，不清缓存（否则下次加载更慢）
+        final int port = PiMetConfig.getWebPort(this);
+        new Thread(() -> {
+            boolean ready = ProotManager.isPiWebHttpReady(port);
+            mainHandler.post(() -> {
+                if (!ready) handlePiWebOfflineDetected();
+                else doHealPiWebPage(reason);
+            });
+        }, "piweb-heal-check").start();
+    }
+
+    private void doHealPiWebPage(String reason) {
+        runOnUiThread(() -> {
+            long now = System.currentTimeMillis();
+            if (now - lastPiWebHealAt < 180000L || piWebWebView == null) return;
+            lastPiWebHealAt = now;
+            Log.w("PiMet", "healPiWebPage: " + reason);
+            try {
+                piWebWebView.clearCache(true);
+            } catch (Throwable ignored) {}
+            Toast.makeText(MainActivity.this, "检测到网页" + reason + "，已清理缓存并重新加载", Toast.LENGTH_SHORT).show();
+            piWebWebView.evaluateJavascript("(function(){if(window.__pimetHealing)return;window.__pimetHealing=1;var p=[];" +
+                    "try{if(navigator.serviceWorker)p.push(navigator.serviceWorker.getRegistrations().then(function(rs){" +
+                    "return Promise.all(rs.map(function(r){return r.unregister();}));}));" +
+                    "if(window.caches)p.push(caches.keys().then(function(ks){return Promise.all(ks.map(function(k){return caches.delete(k);}));}));" +
+                    "}catch(e){}var done=false;function go(){if(done)return;done=true;location.reload();}" +
+                    "Promise.all(p).then(go,go);setTimeout(go,2500);})()", null);
+        });
+    }
+
     private void handlePiWebOfflineDetected() {
+        // 离线页是 Service Worker 在首页 8 秒没响应时给的兜底：盖上「正在加载」，预热首页后自动重载
+        warmThenLoadPiWeb(true);
+    }
+
+    private volatile boolean isPiWebLoading = false;
+    private TextView piWebOfflineTitleTv;
+
+    /** 后台等首页能出首字节再加载 WebView；showUi=true 时期间显示原生「正在加载」而不是离线页 */
+    private void warmThenLoadPiWeb(boolean showUi) {
+        if (showUi) showPiWebLoading();
         if (isOfflineRecovering) return;
         isOfflineRecovering = true;
-        int port = PiMetConfig.getWebPort(this);
-        // 如果服务实际在运行或刚拉起，静默轮询并在就绪后自动重新加载，摆脱手动点击 Try again
+        final int port = PiMetConfig.getWebPort(this);
         new Thread(() -> {
+            boolean ok = false;
             try {
-                for (int i = 0; i < 15; i++) {
-                    try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
-                    if (ProotManager.isPiWebHttpReady(port)) {
-                        mainHandler.post(() -> {
-                            if (piWebWebView != null) {
-                                String url = getPiWebUrl();
-                                String cur = piWebWebView.getUrl();
-                                if (cur == null || !cur.startsWith("http://127.0.0.1:" + port)) {
-                                    piWebWebView.loadUrl(url);
-                                } else {
-                                    piWebWebView.reload();
-                                }
-                                showPiWebOffline(false);
-                            }
-                        });
-                        break;
-                    }
+                long deadline = System.currentTimeMillis() + 150000L;
+                while (System.currentTimeMillis() < deadline && !isFinishing() && !isDestroyed()) {
+                    if (ProotManager.warmPiWebPage(port)) { ok = true; break; }
+                    try { Thread.sleep(700); } catch (InterruptedException ignored) {}
                 }
             } finally {
                 isOfflineRecovering = false;
             }
-        }).start();
+            final boolean ready = ok;
+            mainHandler.post(() -> {
+                if (piWebWebView == null) return;
+                if (ready) {
+                    String url = getPiWebUrl();
+                    String cur = piWebWebView.getUrl();
+                    if (cur == null || !cur.startsWith("http://127.0.0.1:" + port)) piWebWebView.loadUrl(url);
+                    else piWebWebView.reload();
+                    if (isPiWebLoading) showPiWebOffline(false);
+                } else if (isPiWebLoading) {
+                    showPiWebOffline(true);
+                }
+            });
+        }, "piweb-warmup").start();
+    }
+
+    private void showPiWebLoading() {
+        if (piWebOfflineCard == null || piWebWebView == null) return;
+        isPiWebLoading = true;
+        piWebOfflineCard.setVisibility(View.VISIBLE);
+        piWebWebView.setVisibility(View.INVISIBLE);
+        if (piWebOfflineTitleTv == null && piWebOfflineSubTv != null
+                && piWebOfflineSubTv.getParent() instanceof android.view.ViewGroup) {
+            android.view.ViewGroup pg = (android.view.ViewGroup) piWebOfflineSubTv.getParent();
+            int idx = pg.indexOfChild(piWebOfflineSubTv);
+            if (idx > 0 && pg.getChildAt(idx - 1) instanceof TextView) piWebOfflineTitleTv = (TextView) pg.getChildAt(idx - 1);
+        }
+        if (piWebOfflineTitleTv != null) piWebOfflineTitleTv.setText("Pi-Web 正在加载…");
+        if (piWebOfflineSubTv != null) piWebOfflineSubTv.setText("服务刚启动，首屏准备好后会自动进入");
+        if (piWebWakeBtn != null) piWebWakeBtn.setVisibility(View.GONE);
     }
 
     private void showPiWebOffline(boolean offline) {
+        isPiWebLoading = false;
+        if (piWebOfflineTitleTv != null) piWebOfflineTitleTv.setText("Pi-Web 服务未在运行");
+        if (piWebWakeBtn != null) piWebWakeBtn.setVisibility(View.VISIBLE);
         piWebOfflineCard.setVisibility(offline ? View.VISIBLE : View.GONE);
         piWebWebView.setVisibility(offline ? View.GONE : View.VISIBLE);
         int port = PiMetConfig.getWebPort(this);
@@ -5426,6 +5632,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        try {
+            if (piWebWebView != null) piWebWebView.onResume();
+        } catch (Throwable ignored) {}
         initPetMonitor();
         applyPetParams();
         boolean isPetRunning = PetOverlayService.isRunning();

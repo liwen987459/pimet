@@ -23,7 +23,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.xm486.pimet.MainActivity;
-import com.xm486.pimet.PiWebActivity;
 import com.xm486.pimet.ThemeManager;
 
 import java.util.ArrayList;
@@ -401,6 +400,11 @@ public class PetMenu {
                 }
             }));
 
+            actions.add(iconBtn(com.xm486.pimet.R.drawable.ic_terminal, "终端", palette.text, false, v -> {
+                dismiss();
+                com.xm486.pimet.terminal.FloatingTerminal.toggle(context);
+            }));
+
             // 关闭桌宠：低调危险样式（极淡危险底 + 危险色图标）
             actions.add(iconBtn(com.xm486.pimet.R.drawable.ic_power, "关闭桌宠",
                     ThemeManager.statusDangerColor(palette), true, v -> {
@@ -432,10 +436,14 @@ public class PetMenu {
                     }
                 }
                 window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                // 菜单外的触摸交给下层应用（不再整屏拦截导致「触控失灵」），并在点到外面时关闭菜单
+                window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH);
                 window.setDimAmount(0f);
                 window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             }
 
+            dialog.setCanceledOnTouchOutside(true);
             dialog.show();
             positionWindow();
             followHandler.removeCallbacks(followRunnable);
@@ -573,18 +581,7 @@ public class PetMenu {
                 return;
             }
 
-            try {
-                Intent intent = new Intent(context, PiWebActivity.class);
-                intent.putExtra(PiWebActivity.EXTRA_PORT, port);
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                context.startActivity(intent);
-            } catch (Throwable t) {
-                try {
-                    Intent browser = new Intent(Intent.ACTION_VIEW, Uri.parse("http://127.0.0.1:" + port));
-                    browser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    context.startActivity(browser);
-                } catch (Throwable ignored) {}
-            }
+            PetOverlayService.openTargetWeb(context, targetKey, port);
         } catch (Throwable t) {
             Log.e("PetMenu", "openConsole error", t);
         }

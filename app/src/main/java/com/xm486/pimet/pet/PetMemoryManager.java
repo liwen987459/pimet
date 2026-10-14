@@ -517,6 +517,15 @@ public final class PetMemoryManager {
      * 生成主动关怀与闲聊语句（多维度丰富文案池 + 防重复历史队列）
      */
     public static String generateProactiveMessage(Context context) {
+        return generateProactiveMessage(context, PetRegistry.TARGET_PIWEB, null);
+    }
+
+    /**
+     * 主动搭话文案（需在后台线程调用：会探测本地端口）。
+     * target 为当前监控目标；snap 为该目标监控器的最新快照，用于准确描述服务状态，避免误报「未启动」。
+     */
+    public static String generateProactiveMessage(Context context, String target,
+                                                  com.xm486.pimet.monitor.OperitState.Snapshot snap) {
         JSONObject mem = loadMemory(context);
         String userNick = mem.optString("user_nickname", "主人");
         int intimacy = mem.optInt("intimacy", 20);
@@ -527,7 +536,20 @@ public final class PetMemoryManager {
         int battery = getBatteryPercentage(context);
         boolean charging = isBatteryCharging(context);
         int webPort = PiMetConfig.getWebPort(context);
-        boolean webReady = ProotManager.isPiWebHttpReady(webPort);
+        boolean isPiWebTarget = target == null || PetRegistry.TARGET_PIWEB.equals(target);
+        com.xm486.pimet.monitor.OperitState st = snap != null ? snap.state : null;
+        boolean busy = st == com.xm486.pimet.monitor.OperitState.WORKING
+                || st == com.xm486.pimet.monitor.OperitState.THINKING
+                || st == com.xm486.pimet.monitor.OperitState.RESPONDING
+                || st == com.xm486.pimet.monitor.OperitState.TOOL_RUNNING
+                || st == com.xm486.pimet.monitor.OperitState.WAITING;
+        // 监控器已经连上（有非 UNKNOWN 快照）就一定在运行；否则再实际探测一次端口（连续两次都失败才算未启动）
+        boolean webReady = !isPiWebTarget
+                || (st != null && st != com.xm486.pimet.monitor.OperitState.UNKNOWN)
+                || ProotManager.isPiWebHttpReady(webPort)
+                || ProotManager.isPiWebHttpReady(webPort);
+        String targetName = snap != null && snap.agentName != null && !snap.agentName.isEmpty()
+                ? snap.agentName : (isPiWebTarget ? "Pi-Web" : "服务");
 
         List<String> pool = new ArrayList<>();
 
@@ -558,13 +580,19 @@ public final class PetMemoryManager {
         }
 
         // 3. 服务状态关联
-        if (webReady) {
+        if (busy) {
+            // 跑任务时的文案在最后统一替换
+        } else if (!isPiWebTarget && st == com.xm486.pimet.monitor.OperitState.UNKNOWN) {
+            pool.add(targetName + " 现在连不上，点我打开看看？🛠️");
+        } else if (!isPiWebTarget) {
+            pool.add(targetName + " 一切正常，随时等你吩咐 🐾");
+        } else if (webReady) {
             pool.add("Pi-Web (端口 " + webPort + ") 正在后台稳稳运行中，随时等候" + userNick + "的指令 🚀");
             pool.add("戳戳~ 容器服务状态一切正常，需要我帮忙检查什么吗？🐾");
             pool.add(userNick + "在忙什么呢？我随时可以协助你排错或写代码哦 ⚡");
             pool.add("后台环境运转良好，有新的灵感随时告诉我哦！✨");
         } else {
-            pool.add("Pi-Web 服务当前似乎未启动，需要点击启动开启服务吗？🛠️");
+            pool.add("Pi-Web（端口 " + webPort + "）现在连不上，点我打开工作台看看？🛠️");
         }
 
         // 4. 亲密度与桌面陪伴趣味
@@ -585,6 +613,15 @@ public final class PetMemoryManager {
         pool.add("遇到了难缠的 bug 吗？有时候吃个点心回来就有灵感啦 🍪");
         pool.add("小元在屏幕边缘转了个圈，给主人的代码附魔：永无异常！✨");
         pool.add("滴答滴答~ 专注时间已经过去一阵子啦，喝口水润润嗓子吧 💧");
+
+        if (busy) {
+            pool.clear(); // 正在跑任务时只说和任务相关的，不闲聊、不说「空闲」
+            pool.add(targetName + " 还在处理任务，我帮你盯着，有结果第一时间叫你 👀");
+            pool.add("任务进行中～我在旁边守着，不打扰你 ⏳");
+            if (snap.lastTool != null && !snap.lastTool.isEmpty()) {
+                pool.add("正在用 " + snap.lastTool + " 干活中，稍等一下下 🔧");
+            }
+        }
 
         // 过滤最近已播发过的消息，彻底避免复读机
         List<String> validCandidates = new ArrayList<>();
@@ -639,7 +676,7 @@ public final class PetMemoryManager {
             // 确保 phone-operator.md 安装 (专用于感叹号 ! 开头的手机屏幕自动化控制)
             // 内置版本更新时覆盖旧的内置提示词；用户自己改过的（不含旧版签名）不动
             File phoneOperatorFile = new File(agentsDir, "phone-operator.md");
-            final String marker = "<!-- pimet-phone-operator v2 -->";
+            final String marker = "<!-- pimet-phone-operator v3 -->";
             String existing = null;
             if (phoneOperatorFile.isFile()) {
                 try {
@@ -668,7 +705,8 @@ public final class PetMemoryManager {
                         "3. 打开应用：action=\"launch\", app=\"微信\" 或 package=\"com.tencent.mm\"；\n" +
                         "4. 输入：action=\"input\", text=\"内容\"（可选 target 指定输入框，submit=true 回车搜索/发送）；\n" +
                         "5. 翻页：action=\"scroll\", direction=\"down\" 查看下方内容（up 向上）；或 swipe 方向手势；\n" +
-                        "6. 等待：操作后用 action=\"wait_for\", target=\"预期出现的文字\" 或 action=\"wait_idle\"，再 inspect 确认结果；\n" +
+                        "6. 省步骤：tap/input/scroll/swipe/key/launch 成功后结果里自带 screen_after（操作后的界面），直接据此判断下一步，不要再单独 inspect；只有需要等加载时才用 action=\"wait_for\", target=\"预期出现的文字\"；\n" +
+                        "6.1 广告：节点出现 ad_close=true 或结果含 ad_close_candidates（开屏广告、弹窗广告、×、跳过、Skip 倒计时），立即 action=\"close_ad\"；开屏页可传 timeout=3000 等跳过按钮出现；\n" +
                         "7. 按键：action=\"key\", key=\"back\" | \"home\" | \"recents\" | \"notifications\"；\n" +
                         "8. 看图：文字不够时 action=\"screenshot\"（Android 11+）得到图片路径，再用 read 查看；\n" +
                         "9. 若返回 need_permission 或「未连接」，直接告诉主人去开启/重开无障碍服务，不要继续操作；\n" +
